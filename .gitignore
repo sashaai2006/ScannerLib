@@ -1,0 +1,5 @@
+build/
+*.log
+scanner
+scanner_d
+data/

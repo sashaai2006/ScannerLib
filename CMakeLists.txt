@@ -1,31 +1,62 @@
 cmake_minimum_required(VERSION 3.20)
+project(ScannerLib VERSION 1.0 LANGUAGES CXX)
 
-set(APP_SOURCES
-    main.cpp
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# macOS/Homebrew hint (на Linux OpenSSL находится из системных пакетов)
+if(APPLE)
+    list(APPEND CMAKE_PREFIX_PATH
+        "/opt/homebrew/opt/openssl"
+        "/usr/local/opt/openssl"
+        "/opt/homebrew/opt/googletest"
+        "/usr/local/opt/googletest"
+    )
+endif()
+
+find_package(OpenSSL REQUIRED)
+find_package(Threads REQUIRED)
+
+add_library(scanner_core STATIC
+    src/core/scanner.cpp
+    src/core/hash_base.cpp
+    src/crypto/md5_compute.cpp
+    src/utils/logger.cpp
+    src/utils/validate_path.cpp
 )
 
-add_executable(scanner ${APP_SOURCES})
+target_include_directories(scanner_core
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(scanner_core
+    PUBLIC
+        OpenSSL::Crypto
+        Threads::Threads
+)
+
+if(MSVC)
+    target_compile_options(scanner_core PRIVATE /W4)
+else()
+    target_compile_options(scanner_core PRIVATE -Wall -Wextra)
+endif()
+
+add_executable(scanner src/main.cpp)
 
 target_link_libraries(scanner
     PRIVATE
         scanner_core
 )
 
-target_include_directories(scanner
-    PRIVATE
-        ${CMAKE_SOURCE_DIR}/core
-)
-
-if(WIN32 AND MSVC)
-    add_custom_command(TARGET scanner POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:scanner_core>
-            $<TARGET_FILE_DIR:scanner>
-        COMMENT "Copying scanner_core.dll to output directory"
-    )
-endif()
-
 set_target_properties(scanner PROPERTIES
     OUTPUT_NAME "scanner"
     DEBUG_POSTFIX "_d"
 )
+
+option(SCANNER_BUILD_TESTS "Build tests" ON)
+if(SCANNER_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
