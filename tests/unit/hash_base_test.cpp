@@ -1,6 +1,6 @@
-#include <gtest/gtest.h>
-
 #include "core/hash_base.hpp"
+
+#include <gtest/gtest.h>
 
 #include <filesystem>
 #include <fstream>

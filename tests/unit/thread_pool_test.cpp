@@ -1,6 +1,6 @@
-#include <gtest/gtest.h>
-
 #include "threading/thread_pool.hpp"
+
+#include <gtest/gtest.h>
 
 #include <atomic>
 #include <chrono>

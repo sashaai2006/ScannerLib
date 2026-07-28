@@ -11,10 +11,7 @@ Scanner::Scanner(const std::string& csv_path,
                  const std::string& log_path,
                  size_t thread_count) {
   if (thread_count == 0) {
-    thread_count = std::thread::hardware_concurrency();
-    if (thread_count == 0) {
-      thread_count = DEFAULT_THREAD_COUNT;
-    }
+    thread_count = DEFAULT_THREAD_COUNT;
   }
   thread_count_ = thread_count;
   csv_path_ = csv_path;
@@ -45,6 +42,10 @@ Scanner::~Scanner() noexcept {
                            "=== СЕССИЯ СКАНИРОВАНИЯ ЗАВЕРШЕНА ===");
   } catch (...) {
   }
+}
+
+void Scanner::SetMaliciousCallback(MaliciousCallback callback) {
+  malicious_callback_ = std::move(callback);
 }
 
 Scanner::ScanResult Scanner::Scan(const std::filesystem::path& root_path) {
@@ -144,6 +145,9 @@ void Scanner::ProcessFile(const std::filesystem::path& file_path) {
     if (verdict != nullptr) {
       malicious_files_.fetch_add(1);
       LogMaliciousFile(file_path, hash, *verdict);
+      if (malicious_callback_) {
+        malicious_callback_(file_path, hash, *verdict);
+      }
     }
 
     total_files_.fetch_add(1);

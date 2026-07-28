@@ -1,5 +1,8 @@
 build/
 *.log
+scannerlib
+scannerlib_d
 scanner
 scanner_d
-data/
+logs*
+.cache/

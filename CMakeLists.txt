@@ -12,11 +12,21 @@ if(APPLE)
         "/usr/local/opt/openssl"
         "/opt/homebrew/opt/googletest"
         "/usr/local/opt/googletest"
+        "/opt/homebrew/opt/ftxui"
+        "/usr/local/opt/ftxui"
     )
 endif()
 
 find_package(OpenSSL REQUIRED)
 find_package(Threads REQUIRED)
+find_package(ftxui CONFIG QUIET)
+
+if(NOT ftxui_FOUND)
+    include(FetchContent)
+    FetchContent_Declare(ftxui
+        URL https://github.com/ArthurSonzogni/FTXUI/archive/refs/tags/v7.0.1.tar.gz)
+    FetchContent_MakeAvailable(ftxui)
+endif()
 
 add_library(scanner_core STATIC
     src/core/scanner.cpp
@@ -43,17 +53,25 @@ else()
     target_compile_options(scanner_core PRIVATE -Wall -Wextra)
 endif()
 
-add_executable(scanner src/main.cpp)
+add_executable(scannerlib
+    src/main.cpp
+    src/tui/tui_app.cpp
+)
 
-target_link_libraries(scanner
+target_link_libraries(scannerlib
     PRIVATE
         scanner_core
+        ftxui::component
+        ftxui::dom
+        ftxui::screen
 )
 
-set_target_properties(scanner PROPERTIES
-    OUTPUT_NAME "scanner"
+set_target_properties(scannerlib PROPERTIES
+    OUTPUT_NAME "scannerlib"
     DEBUG_POSTFIX "_d"
 )
+
+install(TARGETS scannerlib DESTINATION bin)
 
 option(SCANNER_BUILD_TESTS "Build tests" ON)
 if(SCANNER_BUILD_TESTS)

@@ -1,6 +1,6 @@
-#include <gtest/gtest.h>
-
 #include "threading/block_queue.hpp"
+
+#include <gtest/gtest.h>
 
 #include <atomic>
 #include <memory>

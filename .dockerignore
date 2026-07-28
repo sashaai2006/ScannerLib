@@ -1,6 +1,0 @@
-.git/
-build/
-*.log
-data/
-Dockerfile
-.dockerignore

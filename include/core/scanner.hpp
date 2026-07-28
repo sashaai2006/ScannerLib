@@ -1,15 +1,15 @@
 #pragma once
 
+#include "core/hash_base.hpp"
+#include "crypto/md5_compute.hpp"
+#include "threading/thread_pool.hpp"
+
 #include <atomic>
 #include <chrono>
 #include <filesystem>
 #include <functional>
 #include <memory>
 #include <string>
-
-#include "core/hash_base.hpp"
-#include "crypto/md5_compute.hpp"
-#include "threading/thread_pool.hpp"
 
 class Scanner {
  private:
@@ -36,9 +36,13 @@ class Scanner {
                         const std::string& verdict);
 
  public:
-  explicit Scanner(const std::string& csv_path,
-                   const std::string& log_path,
-                   size_t thread_count = 0);
+  using MaliciousCallback = std::function<void(const std::filesystem::path&,
+                                               const std::string& hash,
+                                               const std::string& verdict)>;
+
+  Scanner(const std::string& csv_path,
+          const std::string& log_path,
+          size_t thread_count = 0);
   ~Scanner() noexcept;
   struct ScanResult {
     size_t total_files;
@@ -49,4 +53,8 @@ class Scanner {
 
   ScanResult Scan(const std::filesystem::path& root_path);
   ScanResult GetCurrentStats() const noexcept;
+  void SetMaliciousCallback(MaliciousCallback callback);
+
+ private:
+  MaliciousCallback malicious_callback_;
 };
