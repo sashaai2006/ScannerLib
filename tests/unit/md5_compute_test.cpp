@@ -1,6 +1,6 @@
-#include <gtest/gtest.h>
-
 #include "crypto/md5_compute.hpp"
+
+#include <gtest/gtest.h>
 
 #include <filesystem>
 #include <fstream>

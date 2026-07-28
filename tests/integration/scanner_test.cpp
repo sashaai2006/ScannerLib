@@ -1,6 +1,6 @@
-#include <gtest/gtest.h>
-
 #include "core/scanner.hpp"
+
+#include <gtest/gtest.h>
 
 #include <filesystem>
 #include <fstream>
@@ -118,6 +118,29 @@ TEST_F(ScannerIntegrationTest, UnreadableFileCountsAsError) {
 
     EXPECT_EQ(result.errors, 1);
     EXPECT_EQ(result.total_files, 3);
+}
+
+TEST_F(ScannerIntegrationTest, UnreadableDirectoryIsSkipped) {
+    if (::geteuid() == 0) {
+        GTEST_SKIP() << "root может читать директории с правами 000, тест неприменим";
+    }
+
+    const auto secret_dir = scan_dir_ / "secret_dir";
+    std::filesystem::create_directory(secret_dir);
+    WriteFile(secret_dir / "file.txt", "content");
+    std::filesystem::permissions(secret_dir, std::filesystem::perms::none);
+
+    Scanner scanner(csv_path_, log_path_, 2);
+    const auto result = scanner.Scan(scan_dir_);
+
+    std::filesystem::permissions(secret_dir, std::filesystem::perms::owner_all);
+
+    EXPECT_EQ(result.total_files, 3);
+    EXPECT_EQ(result.errors, 1);
+
+    const std::string log = ReadLog();
+    EXPECT_NE(log.find("secret_dir"), std::string::npos);
+    EXPECT_NE(log.find("Нет прав доступа к директории"), std::string::npos);
 }
 
 TEST_F(ScannerIntegrationTest, ManyFilesScannedCorrectly) {

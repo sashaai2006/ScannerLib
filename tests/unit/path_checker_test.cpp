@@ -1,6 +1,6 @@
-#include <gtest/gtest.h>
-
 #include "utils/validate_path.hpp"
+
+#include <gtest/gtest.h>
 
 #include <filesystem>
 #include <fstream>

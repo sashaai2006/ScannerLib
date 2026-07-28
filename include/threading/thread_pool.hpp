@@ -1,5 +1,8 @@
 #pragma once
 
+#include "threading/block_queue.hpp"
+#include "utils/logger.hpp"
+
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
@@ -7,8 +10,6 @@
 #include <string>
 #include <thread>
 #include <vector>
-#include "threading/block_queue.hpp"
-#include "utils/logger.hpp"
 
 template <typename Task>
 class ThreadPool {

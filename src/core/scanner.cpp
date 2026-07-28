@@ -11,10 +11,7 @@ Scanner::Scanner(const std::string& csv_path,
                  const std::string& log_path,
                  size_t thread_count) {
   if (thread_count == 0) {
-    thread_count = std::thread::hardware_concurrency();
-    if (thread_count == 0) {
-      thread_count = DEFAULT_THREAD_COUNT;
-    }
+    thread_count = DEFAULT_THREAD_COUNT;
   }
   thread_count_ = thread_count;
   csv_path_ = csv_path;
@@ -45,6 +42,10 @@ Scanner::~Scanner() noexcept {
                            "=== СЕССИЯ СКАНИРОВАНИЯ ЗАВЕРШЕНА ===");
   } catch (...) {
   }
+}
+
+void Scanner::SetMaliciousCallback(MaliciousCallback callback) {
+  malicious_callback_ = std::move(callback);
 }
 
 Scanner::ScanResult Scanner::Scan(const std::filesystem::path& root_path) {
@@ -101,27 +102,91 @@ void Scanner::EnqueueScanTasks(const std::filesystem::path& root_path) {
   try {
     std::error_code ec;
 
-    for (const auto& entry :
-         std::filesystem::recursive_directory_iterator(root_path, ec)) {
-      if (ec) {
+    std::filesystem::recursive_directory_iterator iter(
+        root_path,
+        std::filesystem::directory_options::skip_permission_denied,
+        ec);
+
+    if (ec) {
+      errors_.fetch_add(1);
+      Logger::Instance().Log(
+          Logger::Level::Error,
+          "ОШИБКА открытия директории " + root_path.string() +
+              " для обхода: " + ec.message());
+      return;
+    }
+
+    while (iter != std::filesystem::recursive_directory_iterator()) {
+      try {
+        const auto& entry = *iter;
+
+        if (entry.is_directory(ec)) {
+          if (ec) {
+            errors_.fetch_add(1);
+            Logger::Instance().Log(
+                Logger::Level::Error,
+                "ОШИБКА проверки директории " + entry.path().string() +
+                    ": " + ec.message() + ", пропускаем вложенные файлы");
+            iter.disable_recursion_pending();
+            ec.clear();
+          } else {
+            // Проверяем, можно ли читать содержимое директории, прежде чем
+            // разрешать рекурсивный обход.
+            std::error_code access_ec;
+            auto test_iter =
+                std::filesystem::directory_iterator(entry.path(), access_ec);
+
+            if (access_ec) {
+              errors_.fetch_add(1);
+              Logger::Instance().Log(
+                  Logger::Level::Warning,
+                  "Нет прав доступа к директории " + entry.path().string() +
+                      " (" + access_ec.message() +
+                      "), пропускаем рекурсивный обход");
+              iter.disable_recursion_pending();
+            }
+          }
+        } else if (entry.is_regular_file(ec) && !ec) {
+          auto task = [this, file_path = entry.path()]() {
+            this->ProcessFile(file_path);
+          };
+
+          thread_pool_->Add(std::move(task));
+        } else if (ec) {
+          errors_.fetch_add(1);
+          Logger::Instance().Log(
+              Logger::Level::Error,
+              "ОШИБКА проверки элемента " + entry.path().string() +
+                  ": " + ec.message());
+          ec.clear();
+        }
+      } catch (const std::filesystem::filesystem_error& e) {
         errors_.fetch_add(1);
-        Logger::Instance().Log(Logger::Level::Error,
-                               "ОШИБКА при обходе директории: " + ec.message());
-        continue;
+        Logger::Instance().Log(
+            Logger::Level::Error,
+            "ОШИБКА файловой системы при обработке элемента в директории " +
+                root_path.string() + ": " + e.what() + ", продолжаем обход");
+        iter.disable_recursion_pending();
       }
 
-      if (entry.is_regular_file(ec) && !ec) {
-        auto task = [this, file_path = entry.path()]() {
-          this->ProcessFile(file_path);
-        };
-
-        thread_pool_->Add(std::move(task));
+      std::error_code inc_ec;
+      iter.increment(inc_ec);
+      if (inc_ec) {
+        errors_.fetch_add(1);
+        Logger::Instance().Log(
+            Logger::Level::Error,
+            "ОШИБКА перехода к следующему элементу в директории " +
+                root_path.string() + ": " + inc_ec.message());
+        break;
       }
     }
 
   } catch (const std::filesystem::filesystem_error& e) {
-    throw std::runtime_error("Ошибка при сканировании директории " +
-                             root_path.string() + ": " + e.what());
+    errors_.fetch_add(1);
+    Logger::Instance().Log(
+        Logger::Level::Error,
+        "Критическая ошибка при сканировании директории " +
+            root_path.string() + ": " + e.what());
   }
 }
 
@@ -144,6 +209,9 @@ void Scanner::ProcessFile(const std::filesystem::path& file_path) {
     if (verdict != nullptr) {
       malicious_files_.fetch_add(1);
       LogMaliciousFile(file_path, hash, *verdict);
+      if (malicious_callback_) {
+        malicious_callback_(file_path, hash, *verdict);
+      }
     }
 
     total_files_.fetch_add(1);
