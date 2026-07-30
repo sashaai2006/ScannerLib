@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string_view>
 
 class Scanner {
@@ -62,5 +63,8 @@ class Scanner {
   std::atomic<size_t> malicious_files_{0};
   std::atomic<size_t> errors_{0};
 
+                                                                         
+                                       
+  std::mutex callback_mutex_;
   MaliciousCallback malicious_callback_;
 };

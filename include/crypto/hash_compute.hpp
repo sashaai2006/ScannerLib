@@ -25,7 +25,7 @@ class HashComputeBase : public IHashCompute {
  protected:
   HashComputeBase(std::string_view name,
                   bool deprecated,
-                  const void* md) noexcept;
+                  const void* md);
 
  public:
   std::optional<std::string> ComputeFileHash(
@@ -45,5 +45,5 @@ class HashComputeBase : public IHashCompute {
   size_t digest_length_;
 
   static std::string DigestToHexString(const unsigned char* digest,
-                                       size_t length) noexcept;
+                                       size_t length);
 };

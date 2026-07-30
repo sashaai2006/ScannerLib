@@ -16,7 +16,7 @@ std::string ToUpper(std::string_view value) {
   return result;
 }
 
-}  // namespace
+}             
 
 std::unique_ptr<IHashCompute> HashComputeFactory::Create(
     std::string_view algorithm) {

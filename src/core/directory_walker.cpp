@@ -29,8 +29,8 @@ void DirectoryWalker::Enumerate(const std::filesystem::path& root,
             iter.disable_recursion_pending();
             ec.clear();
           } else {
-            // Проверяем, можно ли читать содержимое директории, прежде чем
-            // разрешать рекурсивный обход.
+                                                                          
+                                          
             std::error_code access_ec;
             const auto test_iter =
                 fs::directory_iterator(entry.path(), access_ec);

@@ -21,7 +21,8 @@ void FileLogger::Open(const std::filesystem::path& log_path) {
 
   std::error_code ec;
   const std::filesystem::path log_dir = log_path.parent_path();
-  if (!log_dir.empty() && !std::filesystem::exists(log_dir)) {
+  if (!log_dir.empty() && !std::filesystem::exists(log_dir, ec)) {
+    ec.clear();
     std::filesystem::create_directories(log_dir, ec);
     if (ec) {
       throw std::runtime_error("Не удается создать директорию для лога: " +

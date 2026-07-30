@@ -13,6 +13,11 @@ ScanController::~ScanController() {
 }
 
 bool ScanController::Start(const ScanConfig& config) {
+                                                                          
+                                                                        
+                   
+  Wait();
+
   {
     std::lock_guard<std::mutex> lock(error_mutex_);
     error_message_.clear();
@@ -40,7 +45,7 @@ bool ScanController::Start(const ScanConfig& config) {
 
   scanner_->SetMaliciousCallback(
       [this](const std::filesystem::path& file_path,
-             std::string_view /*hash*/, std::string_view verdict) {
+             std::string_view       , std::string_view verdict) {
         std::lock_guard<std::mutex> lock(threats_mutex_);
         threats_.push_back({file_path.string(), std::string(verdict)});
       });
@@ -51,9 +56,10 @@ bool ScanController::Start(const ScanConfig& config) {
   }
 
   start_time_ = std::chrono::steady_clock::now();
-  done_ = false;
-
-  Wait();
+                                                                          
+                                                                          
+                                             
+  done_.store(false);
 
   scan_thread_ = std::thread([this, scan_path = config.scan_path]() {
     try {

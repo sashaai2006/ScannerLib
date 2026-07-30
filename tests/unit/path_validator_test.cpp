@@ -86,4 +86,4 @@ TEST_F(PathValidatorTest, ValidateScanTargetAcceptsDirectory) {
   EXPECT_NO_THROW(validator_.ValidateScanTarget(test_dir_.string()));
 }
 
-}  // namespace
+}             

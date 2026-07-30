@@ -3,11 +3,12 @@
 #include <openssl/evp.h>
 
 #include <fstream>
+#include <memory>
 #include <vector>
 
 HashComputeBase::HashComputeBase(std::string_view name,
                                  bool deprecated,
-                                 const void* md) noexcept
+                                 const void* md)
     : name_(name),
       deprecated_(deprecated),
       md_(md),
@@ -28,13 +29,15 @@ std::optional<std::string> HashComputeBase::ComputeFileHash(
 
   const EVP_MD* md = static_cast<const EVP_MD*>(md_);
 
-  EVP_MD_CTX* ctx = EVP_MD_CTX_new();
-  if (ctx == nullptr) {
+                                                                         
+                                               
+  const std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)> ctx(
+      EVP_MD_CTX_new(), &EVP_MD_CTX_free);
+  if (!ctx) {
     return std::nullopt;
   }
 
-  if (EVP_DigestInit_ex(ctx, md, nullptr) != 1) {
-    EVP_MD_CTX_free(ctx);
+  if (EVP_DigestInit_ex(ctx.get(), md, nullptr) != 1) {
     return std::nullopt;
   }
 
@@ -43,31 +46,28 @@ std::optional<std::string> HashComputeBase::ComputeFileHash(
     file.read(buffer, kBufferSize);
     const std::streamsize bytes_read = file.gcount();
     if (bytes_read > 0) {
-      if (EVP_DigestUpdate(ctx, buffer, static_cast<size_t>(bytes_read)) != 1) {
-        EVP_MD_CTX_free(ctx);
+      if (EVP_DigestUpdate(ctx.get(), buffer,
+                           static_cast<size_t>(bytes_read)) != 1) {
         return std::nullopt;
       }
     }
   }
 
   if (file.bad()) {
-    EVP_MD_CTX_free(ctx);
     return std::nullopt;
   }
 
   std::vector<unsigned char> digest(digest_length_);
   unsigned int actual_length = 0;
-  if (EVP_DigestFinal_ex(ctx, digest.data(), &actual_length) != 1) {
-    EVP_MD_CTX_free(ctx);
+  if (EVP_DigestFinal_ex(ctx.get(), digest.data(), &actual_length) != 1) {
     return std::nullopt;
   }
-  EVP_MD_CTX_free(ctx);
 
   return DigestToHexString(digest.data(), actual_length);
 }
 
 std::string HashComputeBase::DigestToHexString(const unsigned char* digest,
-                                               size_t length) noexcept {
+                                               size_t length) {
   static constexpr char hex_chars[] = "0123456789abcdef";
   std::string result(length * 2, '\0');
   for (size_t i = 0; i < length; ++i) {

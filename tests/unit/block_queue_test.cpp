@@ -113,4 +113,4 @@ TEST(BlockQueueTest, PushAfterLockIsDropped) {
     EXPECT_FALSE(queue.Get().has_value());
 }
 
-} // namespace
+}            

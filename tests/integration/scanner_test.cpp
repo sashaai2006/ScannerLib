@@ -17,7 +17,7 @@
 
 namespace {
 
-// SHA256("abc") — содержимое "вредоносного" файла в тестах.
+                                                           
 constexpr const char* kMaliciousContent = "abc";
 constexpr const char* kMaliciousHash =
     "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
@@ -58,7 +58,7 @@ class ScannerIntegrationTest : public ::testing::Test {
     return ss.str();
   }
 
-  // Создаёт Scanner с реальными зависимостями (composition root для тестов).
+                                                                            
   std::unique_ptr<Scanner> MakeScanner(
       size_t thread_count, const std::string& algorithm = "SHA256",
       const std::string& csv_path = "") {
@@ -217,4 +217,4 @@ TEST_F(ScannerIntegrationTest, MaliciousCallbackIsInvoked) {
   EXPECT_NE(found[0].find("Trojan.Test"), std::string::npos);
 }
 
-}  // namespace
+}             

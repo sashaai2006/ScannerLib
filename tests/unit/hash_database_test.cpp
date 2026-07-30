@@ -132,4 +132,4 @@ TEST_F(HashDatabaseTest, DatabaseConstructibleFromMapDirectly) {
   EXPECT_EQ(*v, "Virus.Abc");
 }
 
-}  // namespace
+}             

@@ -150,4 +150,4 @@ TEST_F(HashComputeTest, FactoryIsSupportedCaseInsensitive) {
   EXPECT_FALSE(HashComputeFactory::IsSupported("md4"));
 }
 
-}  // namespace
+}             

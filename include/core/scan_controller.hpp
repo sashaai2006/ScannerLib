@@ -35,6 +35,9 @@ class ScanController {
   ScanController(const ScanController&) = delete;
   ScanController& operator=(const ScanController&) = delete;
 
+                                                                      
+                                                                        
+                                                                           
   bool Start(const ScanConfig& config);
   void Wait();
 

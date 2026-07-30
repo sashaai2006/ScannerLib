@@ -33,7 +33,16 @@ ThreadPool::~ThreadPool() noexcept {
 
 void ThreadPool::Add(Task task) {
   pending_tasks_.fetch_add(1);
-  tasks_.Push(std::move(task));
+  if (!tasks_.Push(std::move(task))) {
+                                                                       
+                                                            
+    if (pending_tasks_.fetch_sub(1) == 1) {
+      std::lock_guard<std::mutex> lock(wait_mutex_);
+      wait_cv_.notify_all();
+    }
+    throw std::runtime_error(
+        "ThreadPool: добавление задачи после остановки пула");
+  }
 }
 
 void ThreadPool::Wait() {

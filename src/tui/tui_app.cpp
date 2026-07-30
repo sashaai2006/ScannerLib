@@ -63,12 +63,6 @@ int TuiApp::Run(int argc, char* argv[]) {
     algo_labels.push_back("SHA256");
   }
 
-  auto set_error = [&](const std::string& message) {
-    std::lock_guard<std::mutex> lock(error_mutex);
-    error_message = message;
-    has_error = true;
-  };
-
   auto start_scan = [&]() {
     std::lock_guard<std::mutex> lock(error_mutex);
     error_message.clear();
@@ -82,7 +76,15 @@ int TuiApp::Run(int argc, char* argv[]) {
 
     size_t threads = 4;
     try {
-      threads = std::stoul(threads_str);
+      size_t pos = 0;
+      threads = std::stoul(threads_str, &pos);
+                                                                         
+      constexpr size_t kMaxThreads = 256;
+      if (pos != threads_str.size() || threads == 0 || threads > kMaxThreads) {
+        error_message = "Число потоков должно быть от 1 до 256";
+        has_error = true;
+        return;
+      }
     } catch (...) {
       error_message = "Некорректное число потоков";
       has_error = true;
@@ -254,12 +256,15 @@ int TuiApp::Run(int argc, char* argv[]) {
 
   auto screen = ScreenInteractive::Fullscreen();
 
+                                                                          
+                                                                          
+                                                               
+  std::atomic<bool> ui_running{true};
   std::thread refresh_thread([&]() {
-    while (!controller.IsDone()) {
+    while (ui_running.load()) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
       screen.Post(Event::Custom);
     }
-    screen.Post(Event::Custom);
   });
 
   auto app = CatchEvent(tabs, [&](Event event) {
@@ -272,6 +277,7 @@ int TuiApp::Run(int argc, char* argv[]) {
 
   screen.Loop(app);
 
+  ui_running.store(false);
   refresh_thread.join();
   controller.Wait();
 

@@ -17,7 +17,7 @@ std::string MakePathError(std::string_view prefix,
   return result;
 }
 
-}  // namespace
+}             
 
 void PathValidator::ValidateScanInputs(std::string_view csv_path,
                                        std::string_view log_path,
@@ -97,7 +97,7 @@ void PathValidator::ValidateLogPath(std::string_view log_path) {
                                log_dir.string() + " (" + ec.message() + ")");
     }
 
-    if (!fs::exists(log_dir)) {
+    if (!fs::exists(log_dir, ec)) {
       if (!fs::create_directories(log_dir, ec)) {
         if (ec) {
           throw std::runtime_error(

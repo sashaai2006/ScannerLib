@@ -1,4 +1,4 @@
-build/
+build*/
 *.log
 scannerlib
 scannerlib_d
@@ -6,3 +6,4 @@ scanner
 scanner_d
 logs*
 .cache/
+compile_commands.json
