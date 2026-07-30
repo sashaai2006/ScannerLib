@@ -19,10 +19,11 @@ void HashBase::Trim(std::string& s) {
   s = s.substr(from, to - from + 1);
 }
 
-void HashBase::LoadHashes(const std::string& csv_path) {
-  std::ifstream file(csv_path);
+void HashBase::LoadHashes(std::string_view csv_path) {
+  std::ifstream file{std::string(csv_path)};
   if (!file.is_open()) {
-    throw std::runtime_error("Не удается открыть файл базы хешей: " + csv_path);
+    throw std::runtime_error("Не удается открыть файл базы хешей: " +
+                             std::string(csv_path));
   }
   std::string line;
   size_t line_num = 0;

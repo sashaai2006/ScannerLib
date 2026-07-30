@@ -8,8 +8,8 @@
 #include <thread>
 #include <utility>
 
-Scanner::Scanner(const std::string& csv_path,
-                 const std::string& log_path,
+Scanner::Scanner(std::string_view csv_path,
+                 std::string_view log_path,
                  size_t thread_count,
                  std::string_view algorithm) {
   if (thread_count == 0) {
@@ -278,12 +278,12 @@ void Scanner::ProcessFile(const std::filesystem::path& file_path) {
 }
 
 void Scanner::LogMaliciousFile(const std::filesystem::path& file_path,
-                               const std::string& hash,
-                               const std::string& verdict) {
-  Logger::Instance().Log(
-      Logger::Level::Warning,
-      "ВРЕДОНОСНЫЙ ФАЙЛ ОБНАРУЖЕН:\n   Путь: " + file_path.string() +
-          "\n   " + algorithm_ + ": " + hash + "\n   Тип:  " + verdict);
+                               std::string_view hash,
+                               std::string_view verdict) {
+  std::string message = "ВРЕДОНОСНЫЙ ФАЙЛ ОБНАРУЖЕН:\n   Путь: " +
+                        file_path.string() + "\n   " + algorithm_ + ": " +
+                        std::string(hash) + "\n   Тип:  " + std::string(verdict);
+  Logger::Instance().Log(Logger::Level::Warning, message);
 }
 
 Scanner::ScanResult Scanner::GetCurrentStats() const noexcept {

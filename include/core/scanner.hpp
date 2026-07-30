@@ -35,16 +35,16 @@ class Scanner {
   void EnqueueScanTasks(const std::filesystem::path& root_path);
   void CountFiles(const std::filesystem::path& root_path);
   void LogMaliciousFile(const std::filesystem::path& file_path,
-                        const std::string& hash,
-                        const std::string& verdict);
+                        std::string_view hash,
+                        std::string_view verdict);
 
  public:
   using MaliciousCallback = std::function<void(const std::filesystem::path&,
-                                               const std::string& hash,
-                                               const std::string& verdict)>;
+                                               std::string_view hash,
+                                               std::string_view verdict)>;
 
-  Scanner(const std::string& csv_path,
-          const std::string& log_path,
+  Scanner(std::string_view csv_path,
+          std::string_view log_path,
           size_t thread_count = 0,
           std::string_view algorithm = "SHA256");
   ~Scanner() noexcept;

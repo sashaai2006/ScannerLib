@@ -21,6 +21,6 @@ class HashBase {
   static void Trim(std::string& s);
 
  public:
-  void LoadHashes(const std::string& csv_path);
+  void LoadHashes(std::string_view csv_path);
   const std::string* GetVerdict(std::string_view hash_hex) const;
 };
