@@ -145,10 +145,10 @@ int TuiApp::Run(int argc, char* argv[]) {
 
     scanner->SetMaliciousCallback(
         [&](const std::filesystem::path& file_path,
-            const std::string& /*hash*/,
-            const std::string& verdict) {
+            std::string_view /*hash*/,
+            std::string_view verdict) {
           std::lock_guard<std::mutex> lock(threats_mutex);
-          threats.push_back({file_path.string(), verdict});
+          threats.push_back({file_path.string(), std::string(verdict)});
         });
 
     {

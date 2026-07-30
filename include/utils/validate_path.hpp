@@ -8,11 +8,11 @@
 
 class PathChecker {
  public:
-  static void ValidatePaths(const std::string& csv_path,
-                            const std::string& log_path,
-                            const std::string& root_path);
-  static bool IsValidHashBase(const std::string& csv_path);
-  static bool IsValidLogPath(const std::string& log_path);
-  static bool IsValidScanDirectory(const std::string& root_path);
-  static void EnsureLogDirectoryExists(const std::string& log_path);
+  static void ValidatePaths(std::string_view csv_path,
+                            std::string_view log_path,
+                            std::string_view root_path);
+  static bool IsValidHashBase(std::string_view csv_path);
+  static bool IsValidLogPath(std::string_view log_path);
+  static bool IsValidScanDirectory(std::string_view root_path);
+  static void EnsureLogDirectoryExists(std::string_view log_path);
 };
