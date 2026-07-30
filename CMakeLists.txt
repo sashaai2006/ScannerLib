@@ -32,6 +32,8 @@ add_library(scanner_core STATIC
     src/core/scanner.cpp
     src/core/hash_base.cpp
     src/crypto/hash_compute.cpp
+    src/crypto/hash_algorithms.cpp
+    src/crypto/hash_compute_factory.cpp
     src/utils/logger.cpp
     src/utils/validate_path.cpp
 )

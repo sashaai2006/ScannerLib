@@ -1,11 +1,10 @@
 #pragma once
 
-#include <cctype>
+#include <cstddef>
 #include <filesystem>
 #include <optional>
 #include <string>
 #include <string_view>
-#include <vector>
 
 class IHashCompute {
  public:
@@ -22,7 +21,21 @@ struct AlgorithmInfo {
   bool deprecated;
 };
 
-class HashCompute : public IHashCompute {
+class HashComputeBase : public IHashCompute {
+ protected:
+  HashComputeBase(std::string_view name,
+                  bool deprecated,
+                  const void* md) noexcept;
+
+ public:
+  std::optional<std::string> ComputeFileHash(
+      const std::filesystem::path& file_path) const override;
+  std::string_view AlgorithmName() const noexcept override { return name_; }
+  bool IsDeprecated() const noexcept override { return deprecated_; }
+
+ protected:
+  virtual ~HashComputeBase() = default;
+
  private:
   static constexpr size_t kBufferSize = 8192;
 
@@ -31,19 +44,6 @@ class HashCompute : public IHashCompute {
   const void* md_;
   size_t digest_length_;
 
- private:
   static std::string DigestToHexString(const unsigned char* digest,
                                        size_t length) noexcept;
-
- public:
-  explicit HashCompute(std::string_view algorithm);
-
-  std::optional<std::string> ComputeFileHash(
-      const std::filesystem::path& file_path) const override;
-  std::string_view AlgorithmName() const noexcept override { return name_; }
-  bool IsDeprecated() const noexcept override { return deprecated_; }
-
-  static const std::vector<AlgorithmInfo>& AvailableAlgorithms() noexcept;
-  static bool IsSupported(std::string_view algorithm) noexcept;
-  static std::string CanonicalName(std::string_view algorithm);
 };

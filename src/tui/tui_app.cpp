@@ -1,7 +1,7 @@
 #include "tui/tui_app.hpp"
 
 #include "core/scanner.hpp"
-#include "crypto/hash_compute.hpp"
+#include "crypto/hash_compute_factory.hpp"
 #include "utils/logger.hpp"
 
 #include <ftxui/component/component.hpp>
@@ -84,7 +84,7 @@ int TuiApp::Run(int argc, char* argv[]) {
   std::vector<std::string> algo_names;
   std::vector<std::string> algo_labels;
   int selected_algo = 0;
-  for (const auto& info : HashCompute::AvailableAlgorithms()) {
+  for (const auto& info : HashComputeFactory::AvailableAlgorithms()) {
     if (info.name == algo_str) {
       selected_algo = static_cast<int>(algo_names.size());
     }
@@ -128,7 +128,7 @@ int TuiApp::Run(int argc, char* argv[]) {
     }
 
     const std::string& selected_algo_name = algo_names[selected_algo];
-    if (!HashCompute::IsSupported(selected_algo_name)) {
+    if (!HashComputeFactory::IsSupported(selected_algo_name)) {
       error_message = "Неподдерживаемый алгоритм хеширования";
       has_error = true;
       return;

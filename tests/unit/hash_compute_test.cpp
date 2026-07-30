@@ -1,4 +1,5 @@
-#include "crypto/hash_compute.hpp"
+#include "crypto/hash_algorithms.hpp"
+#include "crypto/hash_compute_factory.hpp"
 
 #include <gtest/gtest.h>
 
@@ -11,9 +12,9 @@ namespace {
 class HashComputeTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    test_dir_ =
-        std::filesystem::temp_directory_path() /
-        ("hash_compute_test_" + std::to_string(reinterpret_cast<uintptr_t>(this)));
+    test_dir_ = std::filesystem::temp_directory_path() /
+                ("hash_compute_test_" +
+                 std::to_string(reinterpret_cast<uintptr_t>(this)));
     std::filesystem::create_directories(test_dir_);
   }
 
@@ -37,7 +38,7 @@ class HashComputeTest : public ::testing::Test {
 TEST_F(HashComputeTest, Md5KnownVectorAbc) {
   const auto path = WriteFile("abc.txt", "abc");
 
-  HashCompute hasher("md5");
+  Md5Compute hasher;
   const auto hash = hasher.ComputeFileHash(path);
 
   ASSERT_TRUE(hash.has_value());
@@ -49,7 +50,7 @@ TEST_F(HashComputeTest, Md5KnownVectorAbc) {
 TEST_F(HashComputeTest, Sha1KnownVectorAbc) {
   const auto path = WriteFile("abc.txt", "abc");
 
-  HashCompute hasher("SHA1");
+  Sha1Compute hasher;
   const auto hash = hasher.ComputeFileHash(path);
 
   ASSERT_TRUE(hash.has_value());
@@ -61,7 +62,7 @@ TEST_F(HashComputeTest, Sha1KnownVectorAbc) {
 TEST_F(HashComputeTest, Sha256KnownVectorAbc) {
   const auto path = WriteFile("abc.txt", "abc");
 
-  HashCompute hasher("Sha256");
+  Sha256Compute hasher;
   const auto hash = hasher.ComputeFileHash(path);
 
   ASSERT_TRUE(hash.has_value());
@@ -74,7 +75,7 @@ TEST_F(HashComputeTest, Sha256KnownVectorAbc) {
 TEST_F(HashComputeTest, Sha256KnownVectorEmptyFile) {
   const auto path = WriteFile("empty.bin", "");
 
-  HashCompute hasher("SHA256");
+  Sha256Compute hasher;
   const auto hash = hasher.ComputeFileHash(path);
 
   ASSERT_TRUE(hash.has_value());
@@ -85,7 +86,7 @@ TEST_F(HashComputeTest, Sha256KnownVectorEmptyFile) {
 TEST_F(HashComputeTest, Sha256KnownVectorMillionA) {
   const auto path = WriteFile("million.bin", std::string(1000000, 'a'));
 
-  HashCompute hasher("SHA256");
+  Sha256Compute hasher;
   const auto hash = hasher.ComputeFileHash(path);
 
   ASSERT_TRUE(hash.has_value());
@@ -94,21 +95,36 @@ TEST_F(HashComputeTest, Sha256KnownVectorMillionA) {
 }
 
 TEST_F(HashComputeTest, ReturnsNulloptForMissingFile) {
-  HashCompute hasher("SHA256");
+  Sha256Compute hasher;
   EXPECT_FALSE(hasher.ComputeFileHash(test_dir_ / "no_such_file.bin").has_value());
 }
 
 TEST_F(HashComputeTest, ReturnsNulloptForDirectory) {
-  HashCompute hasher("SHA256");
+  Sha256Compute hasher;
   EXPECT_FALSE(hasher.ComputeFileHash(test_dir_).has_value());
 }
 
-TEST_F(HashComputeTest, ThrowsOnUnsupportedAlgorithm) {
-  EXPECT_THROW(HashCompute("md4"), std::invalid_argument);
+TEST_F(HashComputeTest, FactoryCreatesCorrectAlgorithms) {
+  const auto md5 = HashComputeFactory::Create("md5");
+  ASSERT_NE(md5, nullptr);
+  EXPECT_EQ(md5->AlgorithmName(), "MD5");
+  EXPECT_TRUE(md5->IsDeprecated());
+
+  const auto sha1 = HashComputeFactory::Create("SHA1");
+  ASSERT_NE(sha1, nullptr);
+  EXPECT_EQ(sha1->AlgorithmName(), "SHA1");
+
+  const auto sha256 = HashComputeFactory::Create("Sha256");
+  ASSERT_NE(sha256, nullptr);
+  EXPECT_EQ(sha256->AlgorithmName(), "SHA256");
 }
 
-TEST_F(HashComputeTest, ListsAvailableAlgorithms) {
-  const auto& algorithms = HashCompute::AvailableAlgorithms();
+TEST_F(HashComputeTest, FactoryThrowsOnUnsupportedAlgorithm) {
+  EXPECT_THROW(HashComputeFactory::Create("md4"), std::invalid_argument);
+}
+
+TEST_F(HashComputeTest, FactoryListsAvailableAlgorithms) {
+  const auto& algorithms = HashComputeFactory::AvailableAlgorithms();
   EXPECT_GE(algorithms.size(), 3u);
 
   bool has_md5 = false;
@@ -127,11 +143,11 @@ TEST_F(HashComputeTest, ListsAvailableAlgorithms) {
   EXPECT_TRUE(has_sha256);
 }
 
-TEST_F(HashComputeTest, IsSupportedCaseInsensitive) {
-  EXPECT_TRUE(HashCompute::IsSupported("md5"));
-  EXPECT_TRUE(HashCompute::IsSupported("SHA256"));
-  EXPECT_TRUE(HashCompute::IsSupported("Sha1"));
-  EXPECT_FALSE(HashCompute::IsSupported("md4"));
+TEST_F(HashComputeTest, FactoryIsSupportedCaseInsensitive) {
+  EXPECT_TRUE(HashComputeFactory::IsSupported("md5"));
+  EXPECT_TRUE(HashComputeFactory::IsSupported("SHA256"));
+  EXPECT_TRUE(HashComputeFactory::IsSupported("Sha1"));
+  EXPECT_FALSE(HashComputeFactory::IsSupported("md4"));
 }
 
 }  // namespace

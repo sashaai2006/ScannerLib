@@ -1,5 +1,6 @@
 #include "core/scanner.hpp"
 
+#include "crypto/hash_compute_factory.hpp"
 #include "utils/logger.hpp"
 #include "utils/validate_path.hpp"
 
@@ -17,7 +18,7 @@ Scanner::Scanner(const std::string& csv_path,
   thread_count_ = thread_count;
   csv_path_ = csv_path;
   log_path_ = log_path;
-  algorithm_ = HashCompute::CanonicalName(algorithm);
+  algorithm_ = HashComputeFactory::CanonicalName(algorithm);
 
   PathChecker::ValidatePaths(csv_path, log_path, "");
 
@@ -26,7 +27,7 @@ Scanner::Scanner(const std::string& csv_path,
   hash_base_ = std::make_unique<HashBase>();
   hash_base_->LoadHashes(csv_path);
 
-  hash_compute_ = std::make_unique<HashCompute>(algorithm_);
+  hash_compute_ = HashComputeFactory::Create(algorithm_);
 
   thread_pool_ =
       std::make_unique<ThreadPool<std::function<void()>>>(thread_count_);
