@@ -105,9 +105,9 @@ TEST(BlockQueueTest, MultiProducerMultiConsumer) {
 
 TEST(BlockQueueTest, PushAfterLockIsDropped) {
     BlockQueue<int> queue;
-    queue.Push(1);
+    EXPECT_TRUE(queue.Push(1));
     queue.Lock();
-    queue.Push(2);
+    EXPECT_FALSE(queue.Push(2));
 
     EXPECT_EQ(queue.Get(), 1);
     EXPECT_FALSE(queue.Get().has_value());

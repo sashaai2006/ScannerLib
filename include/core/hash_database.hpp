@@ -1,11 +1,18 @@
 #pragma once
 
+#include "core/ihash_database.hpp"
+
 #include <functional>
 #include <string>
-#include <string_view>
 #include <unordered_map>
 
-class HashBase {
+class HashDatabase : public IHashDatabase {
+ public:
+  explicit HashDatabase(std::unordered_map<std::string, std::string> hashes);
+
+  std::optional<std::string_view> GetVerdict(
+      std::string_view hash_hex) const override;
+
  private:
   struct TransparentHash {
     using is_transparent = void;
@@ -16,11 +23,4 @@ class HashBase {
 
   std::unordered_map<std::string, std::string, TransparentHash, std::equal_to<>>
       malicious_hashes_map_;
-
- private:
-  static void Trim(std::string& s);
-
- public:
-  void LoadHashes(std::string_view csv_path);
-  const std::string* GetVerdict(std::string_view hash_hex) const;
 };

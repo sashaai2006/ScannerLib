@@ -21,31 +21,35 @@ class BlockQueue {
     open_ = false;
     cv_.notify_all();
   }
-  void Push(const T& val) {
+
+  bool Push(const T& val) {
     {
       std::lock_guard<std::mutex> lock(mutex_);
       if (!open_) {
-        return;
+        return false;
       }
       queue_.push(val);
     }
     cv_.notify_one();
+    return true;
   }
-  void Push(T&& val) {
+
+  bool Push(T&& val) {
     {
       std::lock_guard<std::mutex> lock(mutex_);
       if (!open_) {
-        return;
+        return false;
       }
       queue_.push(std::move(val));
     }
     cv_.notify_one();
+    return true;
   }
+
   std::optional<T> Get() {
     std::unique_lock<std::mutex> lock(mutex_);
     cv_.wait(lock, [this] { return !queue_.empty() || !open_; });
-    if (queue_.empty())
-      return std::nullopt;
+    if (queue_.empty()) return std::nullopt;
     T val = std::move(queue_.front());
     queue_.pop();
     return val;

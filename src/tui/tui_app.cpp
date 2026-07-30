@@ -1,8 +1,8 @@
 #include "tui/tui_app.hpp"
 
-#include "core/scanner.hpp"
+#include "core/scan_controller.hpp"
 #include "crypto/hash_compute_factory.hpp"
-#include "utils/logger.hpp"
+#include "tui/cli_options.hpp"
 
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/screen_interactive.hpp>
@@ -10,19 +10,10 @@
 
 #include <atomic>
 #include <chrono>
-#include <filesystem>
-#include <getopt.h>
 #include <iostream>
-#include <memory>
-#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
-
-struct MaliciousRecord {
-  std::string path;
-  std::string verdict;
-};
 
 int TuiApp::Run(int argc, char* argv[]) {
   std::string base_str;
@@ -31,55 +22,31 @@ int TuiApp::Run(int argc, char* argv[]) {
   std::string threads_str = "4";
   std::string algo_str = "SHA256";
 
-  const option long_options[] = {
-      {"base", required_argument, nullptr, 'b'},
-      {"log", required_argument, nullptr, 'l'},
-      {"path", required_argument, nullptr, 'p'},
-      {"threads", required_argument, nullptr, 't'},
-      {"algo", required_argument, nullptr, 'a'},
-      {"help", no_argument, nullptr, 'h'},
-      {nullptr, 0, nullptr, 0}};
-
   try {
-    while (true) {
-      int option_index = 0;
-      int c = getopt_long(argc, argv, "b:l:p:t:a:h", long_options, &option_index);
-      if (c == -1) break;
-      switch (c) {
-        case 'b': base_str = optarg; break;
-        case 'l': log_str = optarg; break;
-        case 'p': path_str = optarg; break;
-        case 't': threads_str = optarg; break;
-        case 'a': algo_str = optarg; break;
-        case 'h':
-          std::cerr << "Usage: " << argv[0]
-                    << " [--base <csv>] [--log <log>] [--path <dir>] "
-                       "[--threads <num>] [--algo <md5|sha1|sha256>]\n";
-          return 0;
-        default:
-          std::cerr << "Usage: " << argv[0]
-                    << " [--base <csv>] [--log <log>] [--path <dir>] "
-                       "[--threads <num>] [--algo <md5|sha1|sha256>]\n";
-          return 1;
-      }
+    const auto parsed = CliOptions::Parse(argc, argv);
+    if (!parsed.has_value()) {
+      std::cerr << CliOptions::Usage(argv[0]);
+      return 0;
     }
+    base_str = parsed->base_path;
+    log_str = parsed->log_path;
+    path_str = parsed->scan_path;
+    threads_str = parsed->threads;
+    algo_str = parsed->algorithm;
   } catch (const std::exception& e) {
-    std::cerr << "Error: " << e.what() << "\n";
+    std::cerr << "Error: " << e.what() << "\n" << CliOptions::Usage(argv[0]);
     return 1;
   }
 
   using namespace ftxui;
 
-  std::unique_ptr<Scanner> scanner;
-  std::thread scan_thread;
+  ScanController controller;
 
+  std::atomic<bool> has_error{false};
   std::string error_message;
   std::mutex error_mutex;
-  std::atomic<bool> has_error{false};
 
   int selected_tab = 0;
-  std::atomic<bool> done{true};
-  Scanner::ScanResult result{0, 0, 0, 0, std::chrono::milliseconds{0}};
 
   std::vector<std::string> algo_names;
   std::vector<std::string> algo_labels;
@@ -96,16 +63,11 @@ int TuiApp::Run(int argc, char* argv[]) {
     algo_labels.push_back("SHA256");
   }
 
-  std::vector<MaliciousRecord> threats;
-  std::mutex threats_mutex;
-
-  std::chrono::steady_clock::time_point start_time;
-
-  auto base_input = Input(&base_str, "путь к CSV-базе");
-  auto log_input = Input(&log_str, "путь к файлу лога");
-  auto path_input = Input(&path_str, "директория для сканирования");
-  auto threads_input = Input(&threads_str, "количество потоков");
-  auto algo_dropdown = Dropdown(&algo_labels, &selected_algo);
+  auto set_error = [&](const std::string& message) {
+    std::lock_guard<std::mutex> lock(error_mutex);
+    error_message = message;
+    has_error = true;
+  };
 
   auto start_scan = [&]() {
     std::lock_guard<std::mutex> lock(error_mutex);
@@ -127,56 +89,27 @@ int TuiApp::Run(int argc, char* argv[]) {
       return;
     }
 
-    const std::string& selected_algo_name = algo_names[selected_algo];
-    if (!HashComputeFactory::IsSupported(selected_algo_name)) {
-      error_message = "Неподдерживаемый алгоритм хеширования";
+    ScanConfig config;
+    config.csv_path = base_str;
+    config.log_path = log_str;
+    config.scan_path = path_str;
+    config.thread_count = threads;
+    config.algorithm = algo_names[selected_algo];
+
+    if (!controller.Start(config)) {
+      error_message = controller.GetErrorMessage();
       has_error = true;
       return;
     }
-
-    try {
-      scanner = std::make_unique<Scanner>(base_str, log_str, threads,
-                                          selected_algo_name);
-    } catch (const std::exception& e) {
-      error_message = std::string("Ошибка: ") + e.what();
-      has_error = true;
-      return;
-    }
-
-    scanner->SetMaliciousCallback(
-        [&](const std::filesystem::path& file_path,
-            std::string_view /*hash*/,
-            std::string_view verdict) {
-          std::lock_guard<std::mutex> lock(threats_mutex);
-          threats.push_back({file_path.string(), std::string(verdict)});
-        });
-
-    {
-      std::lock_guard<std::mutex> lock(threats_mutex);
-      threats.clear();
-    }
-
-    start_time = std::chrono::steady_clock::now();
-    done = false;
-
-    if (scan_thread.joinable()) {
-      scan_thread.join();
-    }
-
-    scan_thread = std::thread([&]() {
-      try {
-        result = scanner->Scan(path_str);
-      } catch (const std::exception& e) {
-        std::lock_guard<std::mutex> lock(error_mutex);
-        error_message = std::string("Ошибка сканирования: ") + e.what();
-        has_error = true;
-      }
-      done = true;
-    });
 
     selected_tab = 1;
   };
 
+  auto base_input = Input(&base_str, "путь к CSV-базе");
+  auto log_input = Input(&log_str, "путь к файлу лога");
+  auto path_input = Input(&path_str, "директория для сканирования");
+  auto threads_input = Input(&threads_str, "количество потоков");
+  auto algo_dropdown = Dropdown(&algo_labels, &selected_algo);
   auto start_button = Button("Начать сканирование", start_scan);
 
   auto input_tab = Container::Vertical(
@@ -223,20 +156,10 @@ int TuiApp::Run(int argc, char* argv[]) {
   });
 
   auto scan_tab = Renderer([&]() {
-    Scanner::ScanResult stats = scanner ? scanner->GetCurrentStats()
-                                        : Scanner::ScanResult{0, 0, 0, 0,
-                                                              std::chrono::milliseconds{0}};
-    if (done) {
-      stats = result;
-    }
-
-    std::chrono::milliseconds elapsed{0};
-    if (!done) {
-      elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::steady_clock::now() - start_time);
-    } else if (!has_error) {
-      elapsed = result.duration;
-    }
+    const auto stats = controller.GetStats();
+    const auto elapsed = controller.GetElapsed();
+    const auto threats = controller.GetThreats();
+    const bool done = controller.IsDone();
 
     double ratio = 0.0;
     std::string speed_text;
@@ -249,14 +172,14 @@ int TuiApp::Run(int argc, char* argv[]) {
       }
 
       if (elapsed.count() > 0 && stats.total_files > 0) {
-        double files_per_ms = static_cast<double>(stats.total_files) /
-                              static_cast<double>(elapsed.count());
-        int files_per_s = static_cast<int>(files_per_ms * 1000.0);
+        const double files_per_ms = static_cast<double>(stats.total_files) /
+                                    static_cast<double>(elapsed.count());
+        const int files_per_s = static_cast<int>(files_per_ms * 1000.0);
         speed_text = std::to_string(files_per_s) + " файлов/с";
 
-        size_t remaining = stats.total_expected_files - stats.total_files;
-        double eta_ms = static_cast<double>(remaining) / files_per_ms;
-        int eta_s = static_cast<int>(eta_ms / 1000.0);
+        const size_t remaining = stats.total_expected_files - stats.total_files;
+        const double eta_ms = static_cast<double>(remaining) / files_per_ms;
+        const int eta_s = static_cast<int>(eta_ms / 1000.0);
         eta_text = "Осталось: ~" + std::to_string(eta_s) + " с";
       } else {
         eta_text = "Осталось: вычисление...";
@@ -264,13 +187,10 @@ int TuiApp::Run(int argc, char* argv[]) {
     }
 
     Elements threat_elements;
-    {
-      std::lock_guard<std::mutex> lock(threats_mutex);
-      for (const auto& record : threats) {
-        threat_elements.push_back(hbox(
-            {text(record.path) | flex, separator(),
-             text(record.verdict) | color(Color::RedLight)}));
-      }
+    for (const auto& record : threats) {
+      threat_elements.push_back(hbox(
+          {text(record.path) | flex, separator(),
+           text(record.verdict) | color(Color::RedLight)}));
     }
     if (threat_elements.empty()) {
       threat_elements.push_back(text("—"));
@@ -278,21 +198,18 @@ int TuiApp::Run(int argc, char* argv[]) {
 
     std::string scan_status;
     Color status_color = Color::Yellow;
-    {
-      std::lock_guard<std::mutex> lock(error_mutex);
-      if (has_error) {
-        scan_status = error_message;
-        status_color = Color::RedLight;
-      } else if (done) {
-        scan_status = "Сканирование завершено за " +
-                      std::to_string(elapsed.count()) + " мс";
-        status_color = Color::Green;
-      } else if (stats.total_expected_files == 0) {
-        scan_status = "Подсчёт файлов...";
-      } else {
-        scan_status = "Сканирование: " + std::to_string(stats.total_files) +
-                      " / " + std::to_string(stats.total_expected_files);
-      }
+    if (controller.HasError()) {
+      scan_status = controller.GetErrorMessage();
+      status_color = Color::RedLight;
+    } else if (done) {
+      scan_status = "Сканирование завершено за " +
+                    std::to_string(elapsed.count()) + " мс";
+      status_color = Color::Green;
+    } else if (stats.total_expected_files == 0) {
+      scan_status = "Подсчёт файлов...";
+    } else {
+      scan_status = "Сканирование: " + std::to_string(stats.total_files) +
+                    " / " + std::to_string(stats.total_expected_files);
     }
 
     return vbox({
@@ -338,7 +255,7 @@ int TuiApp::Run(int argc, char* argv[]) {
   auto screen = ScreenInteractive::Fullscreen();
 
   std::thread refresh_thread([&]() {
-    while (!done) {
+    while (!controller.IsDone()) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
       screen.Post(Event::Custom);
     }
@@ -355,16 +272,13 @@ int TuiApp::Run(int argc, char* argv[]) {
 
   screen.Loop(app);
 
-  done = true;
   refresh_thread.join();
-  if (scan_thread.joinable()) {
-    scan_thread.join();
-  }
+  controller.Wait();
 
-  if (has_error) {
+  if (controller.HasError()) {
     return 1;
   }
-  if (result.errors > 0) {
+  if (controller.GetStats().errors > 0) {
     return 2;
   }
   return 0;
