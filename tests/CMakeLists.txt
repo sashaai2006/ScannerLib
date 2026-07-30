@@ -3,7 +3,7 @@ include(GoogleTest)
 
 add_executable(scanner_unit_tests
     unit/hash_base_test.cpp
-    unit/md5_compute_test.cpp
+    unit/hash_compute_test.cpp
     unit/block_queue_test.cpp
     unit/thread_pool_test.cpp
     unit/path_checker_test.cpp
