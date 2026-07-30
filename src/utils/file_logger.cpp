@@ -9,7 +9,7 @@ FileLogger::FileLogger(const std::filesystem::path& log_path) {
 }
 
 FileLogger::~FileLogger() {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   if (file_.is_open()) {
     file_.flush();
     file_.close();
@@ -17,7 +17,7 @@ FileLogger::~FileLogger() {
 }
 
 void FileLogger::Open(const std::filesystem::path& log_path) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
 
   std::error_code ec;
   const std::filesystem::path log_dir = log_path.parent_path();
@@ -43,7 +43,7 @@ void FileLogger::Open(const std::filesystem::path& log_path) {
 }
 
 void FileLogger::Log(Level level, std::string_view message) {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   if (!file_.is_open()) {
     return;
   }

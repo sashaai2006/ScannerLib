@@ -36,7 +36,7 @@ Scanner::~Scanner() noexcept {
 }
 
 void Scanner::SetMaliciousCallback(MaliciousCallback callback) {
-  std::lock_guard<std::mutex> lock(callback_mutex_);
+  std::lock_guard lock(callback_mutex_);
   malicious_callback_ = std::move(callback);
 }
 
@@ -132,7 +132,7 @@ void Scanner::ProcessFile(const std::filesystem::path& file_path) {
                                                                          
       MaliciousCallback callback;
       {
-        std::lock_guard<std::mutex> lock(callback_mutex_);
+        std::lock_guard lock(callback_mutex_);
         callback = malicious_callback_;
       }
       if (callback) {
