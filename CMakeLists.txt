@@ -31,7 +31,7 @@ endif()
 add_library(scanner_core STATIC
     src/core/scanner.cpp
     src/core/hash_base.cpp
-    src/crypto/md5_compute.cpp
+    src/crypto/hash_compute.cpp
     src/utils/logger.cpp
     src/utils/validate_path.cpp
 )

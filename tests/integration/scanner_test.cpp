@@ -10,9 +10,10 @@
 
 namespace {
 
-// MD5("abc") — содержимое "вредоносного" файла в тестах.
+// SHA256("abc") — содержимое "вредоносного" файла в тестах.
 constexpr const char* kMaliciousContent = "abc";
-constexpr const char* kMaliciousHash = "900150983cd24fb0d6963f7d28e17f72";
+constexpr const char* kMaliciousHash =
+    "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
 
 class ScannerIntegrationTest : public ::testing::Test {
 protected:
@@ -154,6 +155,18 @@ TEST_F(ScannerIntegrationTest, ManyFilesScannedCorrectly) {
     const auto result = scanner.Scan(scan_dir_);
 
     EXPECT_EQ(result.total_files, 3 + kExtraFiles);
+    EXPECT_EQ(result.malicious_files, 1);
+    EXPECT_EQ(result.errors, 0);
+}
+
+TEST_F(ScannerIntegrationTest, ExplicitAlgorithmParameterIsRespected) {
+    const std::string md5_csv = (test_dir_ / "md5_base.csv").string();
+    std::ofstream(md5_csv) << "900150983cd24fb0d6963f7d28e17f72;Trojan.Md5\n";
+
+    Scanner scanner(md5_csv, log_path_, 2, "MD5");
+    const auto result = scanner.Scan(scan_dir_);
+
+    EXPECT_EQ(result.total_files, 3);
     EXPECT_EQ(result.malicious_files, 1);
     EXPECT_EQ(result.errors, 0);
 }

@@ -9,13 +9,15 @@
 
 Scanner::Scanner(const std::string& csv_path,
                  const std::string& log_path,
-                 size_t thread_count) {
+                 size_t thread_count,
+                 std::string_view algorithm) {
   if (thread_count == 0) {
     thread_count = DEFAULT_THREAD_COUNT;
   }
   thread_count_ = thread_count;
   csv_path_ = csv_path;
   log_path_ = log_path;
+  algorithm_ = HashCompute::CanonicalName(algorithm);
 
   PathChecker::ValidatePaths(csv_path, log_path, "");
 
@@ -24,13 +26,17 @@ Scanner::Scanner(const std::string& csv_path,
   hash_base_ = std::make_unique<HashBase>();
   hash_base_->LoadHashes(csv_path);
 
-  md5_compute_ = std::make_unique<MD5Compute>();
+  hash_compute_ = std::make_unique<HashCompute>(algorithm_);
 
   thread_pool_ =
       std::make_unique<ThreadPool<std::function<void()>>>(thread_count_);
 
   Logger::Instance().Log(Logger::Level::Info,
                          "=== НОВАЯ СЕССИЯ СКАНИРОВАНИЯ НАЧАТА ===");
+  Logger::Instance().Log(
+      Logger::Level::Info,
+      "Алгоритм хеширования: " + algorithm_ +
+          (hash_compute_->IsDeprecated() ? " (DEPRECATED)" : ""));
   Logger::Instance().Log(
       Logger::Level::Info,
       "Количество рабочих потоков: " + std::to_string(thread_count_));
@@ -233,13 +239,13 @@ void Scanner::EnqueueScanTasks(const std::filesystem::path& root_path) {
 
 void Scanner::ProcessFile(const std::filesystem::path& file_path) {
   try {
-    auto hash_opt = md5_compute_->ComputeFileHashMD5(file_path);
+    auto hash_opt = hash_compute_->ComputeFileHash(file_path);
 
     if (!hash_opt.has_value()) {
       errors_.fetch_add(1);
       Logger::Instance().Log(
           Logger::Level::Error,
-          "ОШИБКА: не удалось вычислить MD5 для файла: " + file_path.string());
+          "ОШИБКА: не удалось вычислить хеш для файла: " + file_path.string());
       return;
     }
 
@@ -276,7 +282,7 @@ void Scanner::LogMaliciousFile(const std::filesystem::path& file_path,
   Logger::Instance().Log(
       Logger::Level::Warning,
       "ВРЕДОНОСНЫЙ ФАЙЛ ОБНАРУЖЕН:\n   Путь: " + file_path.string() +
-          "\n   MD5:  " + hash + "\n   Тип:  " + verdict);
+          "\n   " + algorithm_ + ": " + hash + "\n   Тип:  " + verdict);
 }
 
 Scanner::ScanResult Scanner::GetCurrentStats() const noexcept {

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "core/hash_base.hpp"
-#include "crypto/md5_compute.hpp"
+#include "crypto/hash_compute.hpp"
 #include "threading/thread_pool.hpp"
 
 #include <atomic>
@@ -14,11 +14,12 @@
 class Scanner {
  private:
   std::unique_ptr<HashBase> hash_base_;
-  std::unique_ptr<MD5Compute> md5_compute_;
+  std::unique_ptr<IHashCompute> hash_compute_;
   std::unique_ptr<ThreadPool<std::function<void()>>> thread_pool_;
   size_t thread_count_;
   std::string csv_path_;
   std::string log_path_;
+  std::string algorithm_;
 
  private:
   std::atomic<size_t> total_files_{0};
@@ -44,7 +45,8 @@ class Scanner {
 
   Scanner(const std::string& csv_path,
           const std::string& log_path,
-          size_t thread_count = 0);
+          size_t thread_count = 0,
+          std::string_view algorithm = "SHA256");
   ~Scanner() noexcept;
   struct ScanResult {
     size_t total_files;

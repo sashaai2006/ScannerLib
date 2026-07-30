@@ -1,6 +1,7 @@
 #include "tui/tui_app.hpp"
 
 #include "core/scanner.hpp"
+#include "crypto/hash_compute.hpp"
 #include "utils/logger.hpp"
 
 #include <ftxui/component/component.hpp>
@@ -28,34 +29,37 @@ int TuiApp::Run(int argc, char* argv[]) {
   std::string log_str;
   std::string path_str;
   std::string threads_str = "4";
+  std::string algo_str = "SHA256";
 
   const option long_options[] = {
       {"base", required_argument, nullptr, 'b'},
       {"log", required_argument, nullptr, 'l'},
       {"path", required_argument, nullptr, 'p'},
       {"threads", required_argument, nullptr, 't'},
+      {"algo", required_argument, nullptr, 'a'},
       {"help", no_argument, nullptr, 'h'},
       {nullptr, 0, nullptr, 0}};
 
   try {
     while (true) {
       int option_index = 0;
-      int c = getopt_long(argc, argv, "b:l:p:t:h", long_options, &option_index);
+      int c = getopt_long(argc, argv, "b:l:p:t:a:h", long_options, &option_index);
       if (c == -1) break;
       switch (c) {
         case 'b': base_str = optarg; break;
         case 'l': log_str = optarg; break;
         case 'p': path_str = optarg; break;
         case 't': threads_str = optarg; break;
+        case 'a': algo_str = optarg; break;
         case 'h':
           std::cerr << "Usage: " << argv[0]
                     << " [--base <csv>] [--log <log>] [--path <dir>] "
-                       "[--threads <num>]\n";
+                       "[--threads <num>] [--algo <md5|sha1|sha256>]\n";
           return 0;
         default:
           std::cerr << "Usage: " << argv[0]
                     << " [--base <csv>] [--log <log>] [--path <dir>] "
-                       "[--threads <num>]\n";
+                       "[--threads <num>] [--algo <md5|sha1|sha256>]\n";
           return 1;
       }
     }
@@ -77,6 +81,21 @@ int TuiApp::Run(int argc, char* argv[]) {
   std::atomic<bool> done{true};
   Scanner::ScanResult result{0, 0, 0, 0, std::chrono::milliseconds{0}};
 
+  std::vector<std::string> algo_names;
+  std::vector<std::string> algo_labels;
+  int selected_algo = 0;
+  for (const auto& info : HashCompute::AvailableAlgorithms()) {
+    if (info.name == algo_str) {
+      selected_algo = static_cast<int>(algo_names.size());
+    }
+    algo_names.push_back(info.name);
+    algo_labels.push_back(info.name + (info.deprecated ? " (устарел)" : ""));
+  }
+  if (algo_names.empty()) {
+    algo_names.push_back("SHA256");
+    algo_labels.push_back("SHA256");
+  }
+
   std::vector<MaliciousRecord> threats;
   std::mutex threats_mutex;
 
@@ -86,6 +105,7 @@ int TuiApp::Run(int argc, char* argv[]) {
   auto log_input = Input(&log_str, "путь к файлу лога");
   auto path_input = Input(&path_str, "директория для сканирования");
   auto threads_input = Input(&threads_str, "количество потоков");
+  auto algo_dropdown = Dropdown(&algo_labels, &selected_algo);
 
   auto start_scan = [&]() {
     std::lock_guard<std::mutex> lock(error_mutex);
@@ -107,8 +127,16 @@ int TuiApp::Run(int argc, char* argv[]) {
       return;
     }
 
+    const std::string& selected_algo_name = algo_names[selected_algo];
+    if (!HashCompute::IsSupported(selected_algo_name)) {
+      error_message = "Неподдерживаемый алгоритм хеширования";
+      has_error = true;
+      return;
+    }
+
     try {
-      scanner = std::make_unique<Scanner>(base_str, log_str, threads);
+      scanner = std::make_unique<Scanner>(base_str, log_str, threads,
+                                          selected_algo_name);
     } catch (const std::exception& e) {
       error_message = std::string("Ошибка: ") + e.what();
       has_error = true;
@@ -151,8 +179,9 @@ int TuiApp::Run(int argc, char* argv[]) {
 
   auto start_button = Button("Начать сканирование", start_scan);
 
-  auto input_tab = Container::Vertical({base_input, log_input, path_input,
-                                        threads_input, start_button});
+  auto input_tab = Container::Vertical(
+      {base_input, log_input, path_input, threads_input, algo_dropdown,
+       start_button});
 
   auto error_element = Renderer([&]() {
     std::lock_guard<std::mutex> lock(error_mutex);
@@ -173,6 +202,7 @@ int TuiApp::Run(int argc, char* argv[]) {
                 hbox({text("Лог:    ") | size(WIDTH, EQUAL, 8), log_input->Render()}),
                 hbox({text("Путь:   ") | size(WIDTH, EQUAL, 8), path_input->Render()}),
                 hbox({text("Потоки: ") | size(WIDTH, EQUAL, 8), threads_input->Render()}),
+                hbox({text("Алгоритм:") | size(WIDTH, EQUAL, 8), algo_dropdown->Render()}),
                 separator(),
                 start_button->Render() | center,
             }) | border | size(WIDTH, GREATER_THAN, 60),
