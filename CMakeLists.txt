@@ -30,12 +30,16 @@ endif()
 
 add_library(scanner_core STATIC
     src/core/scanner.cpp
-    src/core/hash_base.cpp
+    src/core/csv_hash_source.cpp
+    src/core/hash_database.cpp
+    src/core/directory_walker.cpp
+    src/core/scan_controller.cpp
     src/crypto/hash_compute.cpp
     src/crypto/hash_algorithms.cpp
     src/crypto/hash_compute_factory.cpp
-    src/utils/logger.cpp
-    src/utils/validate_path.cpp
+    src/threading/thread_pool.cpp
+    src/utils/file_logger.cpp
+    src/utils/path_validator.cpp
 )
 
 target_include_directories(scanner_core
@@ -58,6 +62,7 @@ endif()
 add_executable(scannerlib
     src/main.cpp
     src/tui/tui_app.cpp
+    src/tui/cli_options.cpp
 )
 
 target_link_libraries(scannerlib
