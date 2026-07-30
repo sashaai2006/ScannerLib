@@ -52,6 +52,7 @@ Scanner::ScanResult Scanner::Scan(const std::filesystem::path& root_path) {
   auto start_time = std::chrono::steady_clock::now();
 
   total_files_.store(0);
+  total_expected_files_.store(0);
   malicious_files_.store(0);
   errors_.store(0);
 
@@ -62,6 +63,7 @@ Scanner::ScanResult Scanner::Scan(const std::filesystem::path& root_path) {
         Logger::Level::Info,
         "Начинаем сканирование директории: " + root_path.string());
 
+    CountFiles(root_path);
     EnqueueScanTasks(root_path);
 
     thread_pool_->Wait();
@@ -77,6 +79,7 @@ Scanner::ScanResult Scanner::Scan(const std::filesystem::path& root_path) {
       end_time - start_time);
 
   ScanResult result{.total_files = total_files_.load(),
+                    .total_expected_files = total_expected_files_.load(),
                     .malicious_files = malicious_files_.load(),
                     .errors = errors_.load(),
                     .duration = duration};
@@ -96,6 +99,44 @@ Scanner::ScanResult Scanner::Scan(const std::filesystem::path& root_path) {
       "Время выполнения: " + std::to_string(duration.count()) + " мс");
 
   return result;
+}
+
+void Scanner::CountFiles(const std::filesystem::path& root_path) {
+  try {
+    std::error_code ec;
+    std::filesystem::recursive_directory_iterator iter(
+        root_path,
+        std::filesystem::directory_options::skip_permission_denied,
+        ec);
+
+    if (ec) {
+      return;
+    }
+
+    while (iter != std::filesystem::recursive_directory_iterator()) {
+      try {
+        const auto& entry = *iter;
+
+        if (entry.is_regular_file(ec) && !ec) {
+          total_expected_files_.fetch_add(1);
+        } else if (entry.is_directory(ec) && ec) {
+          iter.disable_recursion_pending();
+          ec.clear();
+        } else if (ec) {
+          ec.clear();
+        }
+      } catch (const std::filesystem::filesystem_error&) {
+        iter.disable_recursion_pending();
+      }
+
+      std::error_code inc_ec;
+      iter.increment(inc_ec);
+      if (inc_ec) {
+        break;
+      }
+    }
+  } catch (const std::filesystem::filesystem_error&) {
+  }
 }
 
 void Scanner::EnqueueScanTasks(const std::filesystem::path& root_path) {
@@ -240,6 +281,7 @@ void Scanner::LogMaliciousFile(const std::filesystem::path& file_path,
 
 Scanner::ScanResult Scanner::GetCurrentStats() const noexcept {
   return ScanResult{.total_files = total_files_.load(),
+                    .total_expected_files = total_expected_files_.load(),
                     .malicious_files = malicious_files_.load(),
                     .errors = errors_.load(),
                     .duration = std::chrono::milliseconds(0)};

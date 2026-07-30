@@ -75,7 +75,7 @@ int TuiApp::Run(int argc, char* argv[]) {
 
   int selected_tab = 0;
   std::atomic<bool> done{true};
-  Scanner::ScanResult result{0, 0, 0, std::chrono::milliseconds{0}};
+  Scanner::ScanResult result{0, 0, 0, 0, std::chrono::milliseconds{0}};
 
   std::vector<MaliciousRecord> threats;
   std::mutex threats_mutex;
@@ -194,7 +194,7 @@ int TuiApp::Run(int argc, char* argv[]) {
 
   auto scan_tab = Renderer([&]() {
     Scanner::ScanResult stats = scanner ? scanner->GetCurrentStats()
-                                        : Scanner::ScanResult{0, 0, 0,
+                                        : Scanner::ScanResult{0, 0, 0, 0,
                                                               std::chrono::milliseconds{0}};
     if (done) {
       stats = result;
@@ -206,6 +206,31 @@ int TuiApp::Run(int argc, char* argv[]) {
           std::chrono::steady_clock::now() - start_time);
     } else if (!has_error) {
       elapsed = result.duration;
+    }
+
+    double ratio = 0.0;
+    std::string speed_text;
+    std::string eta_text;
+    if (stats.total_expected_files > 0) {
+      ratio = static_cast<double>(stats.total_files) /
+              static_cast<double>(stats.total_expected_files);
+      if (ratio > 1.0) {
+        ratio = 1.0;
+      }
+
+      if (elapsed.count() > 0 && stats.total_files > 0) {
+        double files_per_ms = static_cast<double>(stats.total_files) /
+                              static_cast<double>(elapsed.count());
+        int files_per_s = static_cast<int>(files_per_ms * 1000.0);
+        speed_text = std::to_string(files_per_s) + " файлов/с";
+
+        size_t remaining = stats.total_expected_files - stats.total_files;
+        double eta_ms = static_cast<double>(remaining) / files_per_ms;
+        int eta_s = static_cast<int>(eta_ms / 1000.0);
+        eta_text = "Осталось: ~" + std::to_string(eta_s) + " с";
+      } else {
+        eta_text = "Осталось: вычисление...";
+      }
     }
 
     Elements threat_elements;
@@ -232,8 +257,11 @@ int TuiApp::Run(int argc, char* argv[]) {
         scan_status = "Сканирование завершено за " +
                       std::to_string(elapsed.count()) + " мс";
         status_color = Color::Green;
+      } else if (stats.total_expected_files == 0) {
+        scan_status = "Подсчёт файлов...";
       } else {
-        scan_status = "Сканирование...";
+        scan_status = "Сканирование: " + std::to_string(stats.total_files) +
+                      " / " + std::to_string(stats.total_expected_files);
       }
     }
 
@@ -243,6 +271,7 @@ int TuiApp::Run(int argc, char* argv[]) {
         hbox({
             vbox({
                 text("Обработано: " + std::to_string(stats.total_files)),
+                text("Всего:      " + std::to_string(stats.total_expected_files)),
                 text("Угроз:      " + std::to_string(stats.malicious_files)),
                 text("Ошибок:     " + std::to_string(stats.errors)),
                 text("Время:      " + std::to_string(elapsed.count()) + " мс"),
@@ -253,6 +282,16 @@ int TuiApp::Run(int argc, char* argv[]) {
                 text(path_str) | color(Color::Cyan),
             }) | flex,
         }),
+        separator(),
+        hbox({
+            text("Прогресс") | flex,
+            text(speed_text) | dim,
+        }),
+        hbox({
+            gauge(ratio) | flex,
+            text(" " + std::to_string(static_cast<int>(ratio * 100.0)) + "%"),
+        }),
+        text(eta_text) | dim,
         separator(),
         text("Найденные угрозы:") | bold,
         vbox(threat_elements) | frame | flex | border,
