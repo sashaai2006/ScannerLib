@@ -37,7 +37,7 @@ void ThreadPool::Add(Task task) {
                                                                        
                                                             
     if (pending_tasks_.fetch_sub(1) == 1) {
-      std::lock_guard<std::mutex> lock(wait_mutex_);
+      std::lock_guard lock(wait_mutex_);
       wait_cv_.notify_all();
     }
     throw std::runtime_error(
@@ -46,7 +46,7 @@ void ThreadPool::Add(Task task) {
 }
 
 void ThreadPool::Wait() {
-  std::unique_lock<std::mutex> lock(wait_mutex_);
+  std::unique_lock lock(wait_mutex_);
   wait_cv_.wait(lock, [this] { return pending_tasks_.load() == 0; });
 }
 
@@ -69,7 +69,7 @@ void ThreadPool::WorkerLoop() {
       }
     }
     if (pending_tasks_.fetch_sub(1) == 1) {
-      std::lock_guard<std::mutex> lock(wait_mutex_);
+      std::lock_guard lock(wait_mutex_);
       wait_cv_.notify_all();
     }
   }

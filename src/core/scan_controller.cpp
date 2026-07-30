@@ -19,7 +19,7 @@ bool ScanController::Start(const ScanConfig& config) {
   Wait();
 
   {
-    std::lock_guard<std::mutex> lock(error_mutex_);
+    std::lock_guard lock(error_mutex_);
     error_message_.clear();
   }
 
@@ -38,7 +38,7 @@ bool ScanController::Start(const ScanConfig& config) {
                                          directory_walker_, path_validator_,
                                          logger_, config.thread_count);
   } catch (const std::exception& e) {
-    std::lock_guard<std::mutex> lock(error_mutex_);
+    std::lock_guard lock(error_mutex_);
     error_message_ = e.what();
     return false;
   }
@@ -46,12 +46,12 @@ bool ScanController::Start(const ScanConfig& config) {
   scanner_->SetMaliciousCallback(
       [this](const std::filesystem::path& file_path,
              std::string_view       , std::string_view verdict) {
-        std::lock_guard<std::mutex> lock(threats_mutex_);
+        std::lock_guard lock(threats_mutex_);
         threats_.push_back({file_path.string(), std::string(verdict)});
       });
 
   {
-    std::lock_guard<std::mutex> lock(threats_mutex_);
+    std::lock_guard lock(threats_mutex_);
     threats_.clear();
   }
 
@@ -65,7 +65,7 @@ bool ScanController::Start(const ScanConfig& config) {
     try {
       result_ = scanner_->Scan(scan_path);
     } catch (const std::exception& e) {
-      std::lock_guard<std::mutex> lock(error_mutex_);
+      std::lock_guard lock(error_mutex_);
       error_message_ = std::string("Ошибка сканирования: ") + e.what();
     }
     done_ = true;
@@ -81,12 +81,12 @@ void ScanController::Wait() {
 }
 
 bool ScanController::HasError() const {
-  std::lock_guard<std::mutex> lock(error_mutex_);
+  std::lock_guard lock(error_mutex_);
   return !error_message_.empty();
 }
 
 std::string ScanController::GetErrorMessage() const {
-  std::lock_guard<std::mutex> lock(error_mutex_);
+  std::lock_guard lock(error_mutex_);
   return error_message_;
 }
 
@@ -101,7 +101,7 @@ Scanner::ScanResult ScanController::GetStats() const {
 }
 
 std::vector<MaliciousRecord> ScanController::GetThreats() const {
-  std::lock_guard<std::mutex> lock(threats_mutex_);
+  std::lock_guard lock(threats_mutex_);
   return threats_;
 }
 

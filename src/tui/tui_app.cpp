@@ -64,7 +64,7 @@ int TuiApp::Run(int argc, char* argv[]) {
   }
 
   auto start_scan = [&]() {
-    std::lock_guard<std::mutex> lock(error_mutex);
+    std::lock_guard lock(error_mutex);
     error_message.clear();
     has_error = false;
 
@@ -119,7 +119,7 @@ int TuiApp::Run(int argc, char* argv[]) {
        start_button});
 
   auto error_element = Renderer([&]() {
-    std::lock_guard<std::mutex> lock(error_mutex);
+    std::lock_guard lock(error_mutex);
     if (!has_error || error_message.empty()) {
       return text(" ");
     }
