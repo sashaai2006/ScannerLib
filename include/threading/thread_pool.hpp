@@ -4,6 +4,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <cstddef>
 #include <functional>
 #include <mutex>
 #include <string_view>
@@ -15,7 +16,8 @@ class ThreadPool {
   using Task = std::function<void()>;
   using ErrorHandler = std::function<void(std::string_view)>;
 
-  explicit ThreadPool(size_t thread_count, ErrorHandler error_handler = {});
+  explicit ThreadPool(size_t thread_count, ErrorHandler error_handler = {},
+                      size_t queue_capacity = 0);
   ~ThreadPool() noexcept;
 
   ThreadPool(const ThreadPool&) = delete;
@@ -23,6 +25,7 @@ class ThreadPool {
 
   void Add(Task task);
   void Wait();
+  void CancelPending();
 
  private:
   void WorkerLoop();

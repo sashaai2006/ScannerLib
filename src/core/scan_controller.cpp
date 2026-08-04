@@ -9,13 +9,11 @@
 ScanController::ScanController() = default;
 
 ScanController::~ScanController() {
+  Stop();
   Wait();
 }
 
 bool ScanController::Start(const ScanConfig& config) {
-                                                                          
-                                                                        
-                   
   Wait();
 
   {
@@ -33,8 +31,7 @@ bool ScanController::Start(const ScanConfig& config) {
 
     auto hash_compute = HashComputeFactory::Create(config.algorithm);
 
-    scanner_ = std::make_unique<Scanner>(*hash_database_,
-                                         std::move(hash_compute),
+    scanner_ = std::make_unique<Scanner>(*hash_database_, std::move(hash_compute),
                                          directory_walker_, path_validator_,
                                          logger_, config.thread_count);
   } catch (const std::exception& e) {
@@ -44,8 +41,8 @@ bool ScanController::Start(const ScanConfig& config) {
   }
 
   scanner_->SetMaliciousCallback(
-      [this](const std::filesystem::path& file_path,
-             std::string_view       , std::string_view verdict) {
+      [this](const std::filesystem::path& file_path, std::string_view,
+             std::string_view verdict) {
         std::lock_guard lock(threats_mutex_);
         threats_.push_back({file_path.string(), std::string(verdict)});
       });
@@ -56,9 +53,6 @@ bool ScanController::Start(const ScanConfig& config) {
   }
 
   start_time_ = std::chrono::steady_clock::now();
-                                                                          
-                                                                          
-                                             
   done_.store(false);
 
   scan_thread_ = std::thread([this, scan_path = config.scan_path]() {
@@ -72,6 +66,12 @@ bool ScanController::Start(const ScanConfig& config) {
   });
 
   return true;
+}
+
+void ScanController::Stop() {
+  if (scanner_) {
+    scanner_->RequestStop();
+  }
 }
 
 void ScanController::Wait() {
@@ -97,7 +97,7 @@ Scanner::ScanResult ScanController::GetStats() const {
   if (scanner_) {
     return scanner_->GetCurrentStats();
   }
-  return Scanner::ScanResult{0, 0, 0, 0, std::chrono::milliseconds{0}};
+  return Scanner::ScanResult{};
 }
 
 std::vector<MaliciousRecord> ScanController::GetThreats() const {

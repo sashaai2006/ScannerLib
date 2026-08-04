@@ -35,10 +35,8 @@ class ScanController {
   ScanController(const ScanController&) = delete;
   ScanController& operator=(const ScanController&) = delete;
 
-                                                                      
-                                                                        
-                                                                           
   bool Start(const ScanConfig& config);
+  void Stop();
   void Wait();
 
   bool IsDone() const noexcept { return done_.load(); }
@@ -65,6 +63,6 @@ class ScanController {
   mutable std::mutex threats_mutex_;
   std::vector<MaliciousRecord> threats_;
 
-  Scanner::ScanResult result_{0, 0, 0, 0, std::chrono::milliseconds{0}};
+  Scanner::ScanResult result_{};
   std::chrono::steady_clock::time_point start_time_;
 };

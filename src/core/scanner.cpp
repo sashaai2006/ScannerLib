@@ -7,18 +7,20 @@
 Scanner::Scanner(const IHashDatabase& hash_database,
                  std::unique_ptr<IHashCompute> hash_compute,
                  IFileEnumerator& file_enumerator,
-                 const IPathValidator& path_validator,
-                 ILogger& logger,
+                 const IPathValidator& path_validator, ILogger& logger,
                  size_t thread_count)
     : hash_database_(hash_database),
       hash_compute_(std::move(hash_compute)),
       file_enumerator_(file_enumerator),
       path_validator_(path_validator),
       logger_(logger),
-      thread_pool_(thread_count == 0 ? kDefaultThreadCount : thread_count,
-                   [&logger](std::string_view message) {
-                     logger.Log(ILogger::Level::Error, message);
-                   }) {
+      thread_pool_(
+          thread_count == 0 ? kDefaultThreadCount : thread_count,
+          [&logger](std::string_view message) {
+            logger.Log(ILogger::Level::Error, message);
+          },
+          (thread_count == 0 ? kDefaultThreadCount : thread_count) *
+              kQueueCapacityMultiplier) {
   logger_.Log(ILogger::Level::Info,
               "=== НОВАЯ СЕССИЯ СКАНИРОВАНИЯ НАЧАТА ===");
   logger_.Log(ILogger::Level::Info,
@@ -40,6 +42,11 @@ void Scanner::SetMaliciousCallback(MaliciousCallback callback) {
   malicious_callback_ = std::move(callback);
 }
 
+void Scanner::RequestStop() {
+  stop_.store(true);
+  thread_pool_.CancelPending();
+}
+
 Scanner::ScanResult Scanner::Scan(const std::filesystem::path& root_path) {
   const auto start_time = std::chrono::steady_clock::now();
 
@@ -54,9 +61,10 @@ Scanner::ScanResult Scanner::Scan(const std::filesystem::path& root_path) {
     logger_.Log(ILogger::Level::Info,
                 "Начинаем сканирование директории: " + root_path.string());
 
-    CountFiles(root_path);
     EnqueueScanTasks(root_path);
-
+    if (stop_.load()) {
+      thread_pool_.CancelPending();
+    }
     thread_pool_.Wait();
 
   } catch (const std::exception& e) {
@@ -69,13 +77,18 @@ Scanner::ScanResult Scanner::Scan(const std::filesystem::path& root_path) {
   const auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
       end_time - start_time);
 
+  const bool cancelled = stop_.load();
   const ScanResult result{.total_files = total_files_.load(),
                           .total_expected_files = total_expected_files_.load(),
                           .malicious_files = malicious_files_.load(),
                           .errors = errors_.load(),
-                          .duration = duration};
+                          .duration = duration,
+                          .cancelled = cancelled};
 
   logger_.Log(ILogger::Level::Info, "=== СТАТИСТИКА СКАНИРОВАНИЯ ===");
+  if (cancelled) {
+    logger_.Log(ILogger::Level::Warning, "Сканирование остановлено пользователем");
+  }
   logger_.Log(ILogger::Level::Info,
               "Всего файлов обработано: " + std::to_string(result.total_files));
   logger_.Log(ILogger::Level::Info,
@@ -89,19 +102,21 @@ Scanner::ScanResult Scanner::Scan(const std::filesystem::path& root_path) {
   return result;
 }
 
-void Scanner::CountFiles(const std::filesystem::path& root_path) {
-  file_enumerator_.Enumerate(
-      root_path,
-      [this](const std::filesystem::path&) { total_expected_files_.fetch_add(1); },
-      [](const std::filesystem::path&, const std::string&) {});
-}
-
 void Scanner::EnqueueScanTasks(const std::filesystem::path& root_path) {
   file_enumerator_.Enumerate(
       root_path,
       [this](const std::filesystem::path& file_path) {
-        thread_pool_.Add(
-            [this, file_path]() { this->ProcessFile(file_path); });
+        if (stop_.load()) {
+          return false;
+        }
+        try {
+          thread_pool_.Add(
+              [this, file_path]() { this->ProcessFile(file_path); });
+        } catch (const std::runtime_error&) {
+          return false;
+        }
+        total_expected_files_.fetch_add(1);
+        return !stop_.load();
       },
       [this](const std::filesystem::path& path, const std::string& message) {
         errors_.fetch_add(1);
@@ -110,6 +125,10 @@ void Scanner::EnqueueScanTasks(const std::filesystem::path& root_path) {
 }
 
 void Scanner::ProcessFile(const std::filesystem::path& file_path) {
+  if (stop_.load()) {
+    return;
+  }
+
   try {
     const auto hash_opt = hash_compute_->ComputeFileHash(file_path);
 
@@ -121,15 +140,17 @@ void Scanner::ProcessFile(const std::filesystem::path& file_path) {
       return;
     }
 
-    const std::string& hash = hash_opt.value();
+    if (stop_.load()) {
+      return;
+    }
 
+    const std::string& hash = hash_opt.value();
     const auto verdict = hash_database_.GetVerdict(hash);
 
     if (verdict.has_value()) {
       malicious_files_.fetch_add(1);
       LogMaliciousFile(file_path, hash, *verdict);
-                                                                         
-                                                                         
+
       MaliciousCallback callback;
       {
         std::lock_guard lock(callback_mutex_);
@@ -170,5 +191,6 @@ Scanner::ScanResult Scanner::GetCurrentStats() const noexcept {
                     .total_expected_files = total_expected_files_.load(),
                     .malicious_files = malicious_files_.load(),
                     .errors = errors_.load(),
-                    .duration = std::chrono::milliseconds(0)};
+                    .duration = std::chrono::milliseconds(0),
+                    .cancelled = stop_.load()};
 }

@@ -7,3 +7,4 @@ scanner_d
 logs*
 .cache/
 compile_commands.json
+*jpg

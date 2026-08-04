@@ -17,6 +17,9 @@ target_link_libraries(scanner_unit_tests
 
 add_executable(scanner_integration_tests
     integration/scanner_test.cpp
+    integration/batch_app_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/tui/batch_app.cpp
+    ${CMAKE_SOURCE_DIR}/src/tui/cli_options.cpp
 )
 
 target_link_libraries(scanner_integration_tests

@@ -104,4 +104,30 @@ TEST(ThreadPoolTest, PoolIsReusableAcrossWaits) {
     }
 }
 
+TEST(ThreadPoolTest, CancelPendingDropsQueuedTasks) {
+    ThreadPool pool(1);
+    std::atomic<int> started{0};
+    std::atomic<int> finished{0};
+
+    pool.Add([&]() {
+        started.fetch_add(1);
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        finished.fetch_add(1);
+    });
+
+    while (started.load() == 0) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    for (int i = 0; i < 20; ++i) {
+        pool.Add([&]() { finished.fetch_add(1); });
+    }
+
+    pool.CancelPending();
+    pool.Wait();
+
+    EXPECT_EQ(started.load(), 1);
+    EXPECT_EQ(finished.load(), 1);
+}
+
 }            

@@ -61,6 +61,7 @@ endif()
 add_executable(scannerlib
     src/main.cpp
     src/tui/tui_app.cpp
+    src/tui/batch_app.cpp
     src/tui/cli_options.cpp
 )
 

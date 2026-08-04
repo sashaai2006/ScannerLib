@@ -2,7 +2,6 @@
 
 #include "core/scan_controller.hpp"
 #include "crypto/hash_compute_factory.hpp"
-#include "tui/cli_options.hpp"
 
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/screen_interactive.hpp>
@@ -10,33 +9,17 @@
 
 #include <atomic>
 #include <chrono>
-#include <iostream>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
 
-int TuiApp::Run(int argc, char* argv[]) {
-  std::string base_str;
-  std::string log_str;
-  std::string path_str;
-  std::string threads_str = "4";
-  std::string algo_str = "SHA256";
-
-  try {
-    const auto parsed = CliOptions::Parse(argc, argv);
-    if (!parsed.has_value()) {
-      std::cerr << CliOptions::Usage(argv[0]);
-      return 0;
-    }
-    base_str = parsed->base_path;
-    log_str = parsed->log_path;
-    path_str = parsed->scan_path;
-    threads_str = parsed->threads;
-    algo_str = parsed->algorithm;
-  } catch (const std::exception& e) {
-    std::cerr << "Error: " << e.what() << "\n" << CliOptions::Usage(argv[0]);
-    return 1;
-  }
+int TuiApp::Run(const CliOptions& options) {
+  std::string base_str = options.base_path;
+  std::string log_str = options.log_path;
+  std::string path_str = options.scan_path;
+  std::string threads_str = options.threads;
+  std::string algo_str = options.algorithm;
 
   using namespace ftxui;
 
@@ -76,17 +59,9 @@ int TuiApp::Run(int argc, char* argv[]) {
 
     size_t threads = 4;
     try {
-      size_t pos = 0;
-      threads = std::stoul(threads_str, &pos);
-                                                                         
-      constexpr size_t kMaxThreads = 256;
-      if (pos != threads_str.size() || threads == 0 || threads > kMaxThreads) {
-        error_message = "Число потоков должно быть от 1 до 256";
-        has_error = true;
-        return;
-      }
-    } catch (...) {
-      error_message = "Некорректное число потоков";
+      threads = CliOptions::ParseThreadCount(threads_str);
+    } catch (const std::exception& e) {
+      error_message = e.what();
       has_error = true;
       return;
     }
@@ -107,12 +82,15 @@ int TuiApp::Run(int argc, char* argv[]) {
     selected_tab = 1;
   };
 
+  auto stop_scan = [&]() { controller.Stop(); };
+
   auto base_input = Input(&base_str, "путь к CSV-базе");
   auto log_input = Input(&log_str, "путь к файлу лога");
   auto path_input = Input(&path_str, "директория для сканирования");
   auto threads_input = Input(&threads_str, "количество потоков");
   auto algo_dropdown = Dropdown(&algo_labels, &selected_algo);
   auto start_button = Button("Начать сканирование", start_scan);
+  auto stop_button = Button("Остановить", stop_scan);
 
   auto input_tab = Container::Vertical(
       {base_input, log_input, path_input, threads_input, algo_dropdown,
@@ -133,19 +111,26 @@ int TuiApp::Run(int argc, char* argv[]) {
         hbox({
             filler(),
             vbox({
-                hbox({text("База:   ") | size(WIDTH, EQUAL, 8), base_input->Render()}),
-                hbox({text("Лог:    ") | size(WIDTH, EQUAL, 8), log_input->Render()}),
-                hbox({text("Путь:   ") | size(WIDTH, EQUAL, 8), path_input->Render()}),
-                hbox({text("Потоки: ") | size(WIDTH, EQUAL, 8), threads_input->Render()}),
-                hbox({text("Алгоритм:") | size(WIDTH, EQUAL, 8), algo_dropdown->Render()}),
+                hbox({text("База:   ") | size(WIDTH, EQUAL, 8),
+                      base_input->Render()}),
+                hbox({text("Лог:    ") | size(WIDTH, EQUAL, 8),
+                      log_input->Render()}),
+                hbox({text("Путь:   ") | size(WIDTH, EQUAL, 8),
+                      path_input->Render()}),
+                hbox({text("Потоки: ") | size(WIDTH, EQUAL, 8),
+                      threads_input->Render()}),
+                hbox({text("Алгоритм:") | size(WIDTH, EQUAL, 8),
+                      algo_dropdown->Render()}),
                 separator(),
                 start_button->Render() | center,
-            }) | border | size(WIDTH, GREATER_THAN, 60),
+            }) | border |
+                size(WIDTH, GREATER_THAN, 60),
             filler(),
         }) | flex,
         error_element->Render(),
-        text("Tab/стрелки — навигация  |  Enter — начать сканирование  |  q — выход")
-            | center | dim,
+        text("Tab/стрелки — навигация  |  Enter — начать сканирование  |  "
+             "q — выход") |
+            center | dim,
     });
   });
 
@@ -157,7 +142,9 @@ int TuiApp::Run(int argc, char* argv[]) {
     return false;
   });
 
-  auto scan_tab = Renderer([&]() {
+  auto scan_controls = Container::Horizontal({stop_button});
+
+  auto scan_tab = Renderer(scan_controls, [&]() {
     const auto stats = controller.GetStats();
     const auto elapsed = controller.GetElapsed();
     const auto threats = controller.GetThreats();
@@ -173,18 +160,19 @@ int TuiApp::Run(int argc, char* argv[]) {
         ratio = 1.0;
       }
 
-      if (elapsed.count() > 0 && stats.total_files > 0) {
+      if (elapsed.count() > 0 && stats.total_files > 0 && !stats.cancelled) {
         const double files_per_ms = static_cast<double>(stats.total_files) /
                                     static_cast<double>(elapsed.count());
         const int files_per_s = static_cast<int>(files_per_ms * 1000.0);
         speed_text = std::to_string(files_per_s) + " файлов/с";
 
-        const size_t remaining = stats.total_expected_files - stats.total_files;
-        const double eta_ms = static_cast<double>(remaining) / files_per_ms;
-        const int eta_s = static_cast<int>(eta_ms / 1000.0);
-        eta_text = "Осталось: ~" + std::to_string(eta_s) + " с";
-      } else {
-        eta_text = "Осталось: вычисление...";
+        if (stats.total_files < stats.total_expected_files) {
+          const size_t remaining =
+              stats.total_expected_files - stats.total_files;
+          const double eta_ms = static_cast<double>(remaining) / files_per_ms;
+          const int eta_s = static_cast<int>(eta_ms / 1000.0);
+          eta_text = "Осталось: ~" + std::to_string(eta_s) + " с";
+        }
       }
     }
 
@@ -203,12 +191,16 @@ int TuiApp::Run(int argc, char* argv[]) {
     if (controller.HasError()) {
       scan_status = controller.GetErrorMessage();
       status_color = Color::RedLight;
+    } else if (done && stats.cancelled) {
+      scan_status = "Сканирование остановлено за " +
+                    std::to_string(elapsed.count()) + " мс";
+      status_color = Color::Yellow;
     } else if (done) {
       scan_status = "Сканирование завершено за " +
                     std::to_string(elapsed.count()) + " мс";
       status_color = Color::Green;
     } else if (stats.total_expected_files == 0) {
-      scan_status = "Подсчёт файлов...";
+      scan_status = "Обход директории...";
     } else {
       scan_status = "Сканирование: " + std::to_string(stats.total_files) +
                     " / " + std::to_string(stats.total_expected_files);
@@ -220,7 +212,8 @@ int TuiApp::Run(int argc, char* argv[]) {
         hbox({
             vbox({
                 text("Обработано: " + std::to_string(stats.total_files)),
-                text("Всего:      " + std::to_string(stats.total_expected_files)),
+                text("Всего:      " +
+                     std::to_string(stats.total_expected_files)),
                 text("Угроз:      " + std::to_string(stats.malicious_files)),
                 text("Ошибок:     " + std::to_string(stats.errors)),
                 text("Время:      " + std::to_string(elapsed.count()) + " мс"),
@@ -247,7 +240,9 @@ int TuiApp::Run(int argc, char* argv[]) {
         separator(),
         hbox({
             text(scan_status) | color(status_color) | flex,
-            text("q — выход") | dim,
+            done ? text("q — выход") | dim
+                 : hbox({stop_button->Render(), text("  s — стоп  |  q — выход") |
+                                                    dim}),
         }),
     });
   });
@@ -256,9 +251,6 @@ int TuiApp::Run(int argc, char* argv[]) {
 
   auto screen = ScreenInteractive::Fullscreen();
 
-                                                                          
-                                                                          
-                                                               
   std::atomic<bool> ui_running{true};
   std::thread refresh_thread([&]() {
     while (ui_running.load()) {
@@ -268,7 +260,15 @@ int TuiApp::Run(int argc, char* argv[]) {
   });
 
   auto app = CatchEvent(tabs, [&](Event event) {
+    if (event == Event::Character('s') && selected_tab == 1 &&
+        !controller.IsDone()) {
+      stop_scan();
+      return true;
+    }
     if (event == Event::Character('q')) {
+      if (!controller.IsDone()) {
+        stop_scan();
+      }
       screen.Exit();
       return true;
     }
@@ -279,6 +279,9 @@ int TuiApp::Run(int argc, char* argv[]) {
 
   ui_running.store(false);
   refresh_thread.join();
+  if (!controller.IsDone()) {
+    controller.Stop();
+  }
   controller.Wait();
 
   if (controller.HasError()) {
