@@ -9,12 +9,14 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <unistd.h>
-
+#include <vector>
 namespace {
 
                                                            
@@ -215,6 +217,30 @@ TEST_F(ScannerIntegrationTest, MaliciousCallbackIsInvoked) {
   ASSERT_EQ(found.size(), 1u);
   EXPECT_NE(found[0].find("evil.bin"), std::string::npos);
   EXPECT_NE(found[0].find("Trojan.Test"), std::string::npos);
+}
+
+TEST_F(ScannerIntegrationTest, RequestStopCancelsScan) {
+  constexpr int kExtraFiles = 400;
+  for (int i = 0; i < kExtraFiles; ++i) {
+    WriteFile(scan_dir_ / ("big_" + std::to_string(i) + ".bin"),
+              std::string(256 * 1024, 'x'));
+  }
+
+  auto scanner = MakeScanner(2);
+
+  std::thread stopper([&]() {
+    for (int i = 0; i < 10000 && scanner->GetCurrentStats().total_files == 0;
+         ++i) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    scanner->RequestStop();
+  });
+
+  const auto result = scanner->Scan(scan_dir_);
+  stopper.join();
+
+  EXPECT_TRUE(result.cancelled);
+  EXPECT_LT(result.total_files, static_cast<size_t>(3 + kExtraFiles));
 }
 
 }             

@@ -29,8 +29,6 @@ void DirectoryWalker::Enumerate(const std::filesystem::path& root,
             iter.disable_recursion_pending();
             ec.clear();
           } else {
-                                                                          
-                                          
             std::error_code access_ec;
             const auto test_iter =
                 fs::directory_iterator(entry.path(), access_ec);
@@ -44,7 +42,9 @@ void DirectoryWalker::Enumerate(const std::filesystem::path& root,
             }
           }
         } else if (entry.is_regular_file(ec) && !ec) {
-          on_file(entry.path());
+          if (!on_file(entry.path())) {
+            break;
+          }
         } else if (ec) {
           on_error(entry.path(), "ОШИБКА проверки элемента: " + ec.message());
           ec.clear();

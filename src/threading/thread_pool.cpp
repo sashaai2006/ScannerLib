@@ -3,8 +3,9 @@
 #include <stdexcept>
 #include <string>
 
-ThreadPool::ThreadPool(size_t thread_count, ErrorHandler error_handler)
-    : error_handler_(std::move(error_handler)) {
+ThreadPool::ThreadPool(size_t thread_count, ErrorHandler error_handler,
+                       size_t queue_capacity)
+    : tasks_(queue_capacity), error_handler_(std::move(error_handler)) {
   if (thread_count == 0) {
     throw std::invalid_argument("ThreadPool: thread_count > 0");
   }
@@ -34,8 +35,6 @@ ThreadPool::~ThreadPool() noexcept {
 void ThreadPool::Add(Task task) {
   pending_tasks_.fetch_add(1);
   if (!tasks_.Push(std::move(task))) {
-                                                                       
-                                                            
     if (pending_tasks_.fetch_sub(1) == 1) {
       std::lock_guard lock(wait_mutex_);
       wait_cv_.notify_all();
@@ -48,6 +47,17 @@ void ThreadPool::Add(Task task) {
 void ThreadPool::Wait() {
   std::unique_lock lock(wait_mutex_);
   wait_cv_.wait(lock, [this] { return pending_tasks_.load() == 0; });
+}
+
+void ThreadPool::CancelPending() {
+  const size_t dropped = tasks_.Clear();
+  if (dropped == 0) {
+    return;
+  }
+  if (pending_tasks_.fetch_sub(dropped) == dropped) {
+    std::lock_guard lock(wait_mutex_);
+    wait_cv_.notify_all();
+  }
 }
 
 void ThreadPool::WorkerLoop() {

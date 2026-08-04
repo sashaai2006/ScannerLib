@@ -113,4 +113,33 @@ TEST(BlockQueueTest, PushAfterLockIsDropped) {
     EXPECT_FALSE(queue.Get().has_value());
 }
 
+TEST(BlockQueueTest, ClearDropsQueuedItemsAndKeepsOpen) {
+    BlockQueue<int> queue;
+    EXPECT_TRUE(queue.Push(1));
+    EXPECT_TRUE(queue.Push(2));
+    EXPECT_EQ(queue.Clear(), 2u);
+    EXPECT_TRUE(queue.Empty());
+    EXPECT_TRUE(queue.Push(3));
+    EXPECT_EQ(queue.Get(), 3);
+}
+
+TEST(BlockQueueTest, BoundedCapacityBlocksUntilSpace) {
+    BlockQueue<int> queue(1);
+    EXPECT_TRUE(queue.Push(1));
+
+    std::atomic<bool> second_pushed{false};
+    std::thread producer([&]() {
+        EXPECT_TRUE(queue.Push(2));
+        second_pushed = true;
+    });
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    EXPECT_FALSE(second_pushed.load());
+
+    EXPECT_EQ(queue.Get(), 1);
+    producer.join();
+    EXPECT_TRUE(second_pushed.load());
+    EXPECT_EQ(queue.Get(), 2);
+}
+
 }            

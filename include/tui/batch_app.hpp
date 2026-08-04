@@ -2,7 +2,7 @@
 
 #include "tui/cli_options.hpp"
 
-class TuiApp {
+class BatchApp {
  public:
   static int Run(const CliOptions& options);
 };

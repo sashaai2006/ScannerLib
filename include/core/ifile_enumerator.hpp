@@ -6,7 +6,7 @@
 
 class IFileEnumerator {
  public:
-  using FileVisitor = std::function<void(const std::filesystem::path&)>;
+  using FileVisitor = std::function<bool(const std::filesystem::path&)>;
   using ErrorHandler =
       std::function<void(const std::filesystem::path&, const std::string&)>;
 
